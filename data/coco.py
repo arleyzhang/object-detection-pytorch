@@ -225,7 +225,7 @@ class COCODetection(data.Dataset):
                    target is the object returned by ``coco.loadAnns``.
         """
         im, gt, h, w = self.pull_item(index)
-        return im, gt
+        return im, gt, h, w
 
     def __len__(self):
         return len(self.ids)

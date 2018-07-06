@@ -9,11 +9,13 @@ import torch
 import torch.nn as nn
 import torch.backends.cudnn as cudnn
 from torch.autograd import Variable
-from data import VOC_ROOT, VOCAnnotationTransform, VOCDetection, BaseTransform
-from data import VOC_CLASSES as labelmap
 import torch.utils.data as data
 
-from ssd import build_ssd
+from data import VOC_ROOT, VOCAnnotationTransform, VOCDetection, BaseTransform
+from data import VOC_CLASSES as labelmap
+from data.config import *
+from models.model_build import creat_model
+from utils import Timer
 
 import sys
 import os
@@ -51,27 +53,25 @@ parser.add_argument('--cleanup', default=True, type=str2bool,
 
 args = parser.parse_args()
 
-#if args.voc_root == 'VOC_ROOT':
-#args.voc_root = '/home/maolei/work/data/VOCdevkit'
-
 ###########################################
 # test with trained_model
 if args.trained_model is None:
-    args.trained_model = '../../weights/ssd_VOC_180625_119999.pth'
+    args.trained_model = '../../weights/tmp2.pth'
 
 #Annotations for crownd #Annotations_src for normal voc
-annopath = os.path.join(args.voc_root, 'VOC2007', 'Annotations_src', '%s.xml')
+annopath = os.path.join(args.voc_root, 'VOC2007', 'Annotations', '%s.xml')
 imgpath = os.path.join(args.voc_root, 'VOC2007', 'JPEGImages', '%s.jpg')
 imgsetpath = os.path.join(args.voc_root, 'VOC2007', 'ImageSets', 'Main', '{:s}.txt')
 YEAR = '2007'
 devkit_path = args.voc_root + 'VOC' + YEAR
 dataset_mean = (104, 117, 123)
-set_type = 'test_full' #test_full   #test_crowd
+set_type = 'test' #test_full   #test_crowd
 
 CUDA_VISIBLE_DEVICES="6"        #####################Specified GPUs range
 os.environ["CUDA_VISIBLE_DEVICES"] = CUDA_VISIBLE_DEVICES
 
-print ('data_path:', devkit_path, '  test_type:', set_type, '  device_id:', CUDA_VISIBLE_DEVICES)
+print ('data_path:', devkit_path, 'test_type:', set_type, 'test_model:', args.trained_model,\
+        'device_id:', CUDA_VISIBLE_DEVICES)
 
 if not os.path.exists(args.save_folder):
     os.mkdir(args.save_folder)
@@ -85,31 +85,6 @@ if torch.cuda.is_available():
         torch.set_default_tensor_type('torch.FloatTensor')
 else:
     torch.set_default_tensor_type('torch.FloatTensor')
-
-class Timer(object):
-    """A simple timer."""
-    def __init__(self):
-        self.total_time = 0.
-        self.calls = 0
-        self.start_time = 0.
-        self.diff = 0.
-        self.average_time = 0.
-
-    def tic(self):
-        # using time.time instead of time.clock because time time.clock
-        # does not normalize for multithreading
-        self.start_time = time.time()
-
-    def toc(self, average=True):
-        self.diff = time.time() - self.start_time
-        self.total_time += self.diff
-        self.calls += 1
-        self.average_time = self.total_time / self.calls
-        if average:
-            return self.average_time
-        else:
-            return self.diff
-
 
 def parse_rec(filename):
     """ Parse a PASCAL VOC xml file """
@@ -442,7 +417,7 @@ def evaluate_detections(box_list, output_dir, dataset):
 if __name__ == '__main__':
     # load net
     num_classes = len(labelmap) + 1                      # +1 for background
-    net = build_ssd('test', 300, num_classes)            # initialize SSD
+    net = creat_model(phase='test', cfg=ssd_voc_vgg)            # initialize SSD
     net.load_state_dict(torch.load(args.trained_model)['state_dict'])   #model is dict{}
     net.eval()
     print('Finished loading model!')

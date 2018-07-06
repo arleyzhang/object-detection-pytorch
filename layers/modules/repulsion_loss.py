@@ -30,12 +30,7 @@ class RepulsionLoss(nn.Module):
         #     -torch.log(1 - x),  #if condition is true
         #     ((x - sigma) / (1. - sigma)) - torch.log(1. - sigma)   #else
         # )
-        sigma = smooth#torch.from_numpy(np.array([smooth])).float()
-        idx_ = x <= smooth
-        x[idx_] = -torch.log(1 - x[idx_] + 1e-10)
-        idx_ = x > smooth
-        x[idx_] = ((x[idx_]  - sigma) / (1. - sigma + 1e-10)) - math.log(1. - sigma + 1e-10)
-        return x
+        pass
 
     #repul_loss(loc_p, loc_g, priors)
     def forward(self, loc_data, ground_data, prior_data):
@@ -46,19 +41,12 @@ class RepulsionLoss(nn.Module):
         # sigma = 1
         # loss = torch.sum(-torch.log(1-iog+1e-10))  
         # sigma = 0
-        #iog = self.smoothln(iog, 1.) #backword is work!
-        sigma = 1.
-        idx_ = iog <= sigma
-        iog[idx_] = -torch.log(1 - iog[idx_] + 1e-10)
-        idx_ = ~idx_
-        iog[idx_] = ((iog[idx_]  - sigma) / (1. - sigma + 1e-10)) - math.log(1. - sigma + 1e-10)
+        # sigma = 1.
+        # idx_ = iog <= sigma
+        # iog[idx_] = -torch.log(1 - iog[idx_] + 1e-10)
+        # idx_ = ~idx_
+        # iog[idx_] = ((iog[idx_]  - sigma) / (1. - sigma + 1e-10)) - math.log(1. - sigma + 1e-10)
 
         loss_repgt = torch.sum(iog)
-        #print ('loss_repgt', loss_repgt.size())
-
-        #########################
-        # overlaps = jaccard(
-        #     decoded_boxes,
-        #     decoded_boxes
-        # )  
+        #print ('loss_repgt', loss_repgt.size()) 
         return loss_repgt

@@ -126,3 +126,21 @@ data/ssd_dataloader.py
 
 # pylint
 .pylintrc
+
+####### added by lei
+# for folder
+logs/
+__pycache__/
+coco300_35k/
+ssd300_120000/
+eval/
+
+
+
+# for .files
+*.DS_Store
+*.log
+*.pyc
+*.pkl
+._coco300_35k
+####### end lei

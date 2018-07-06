@@ -1,7 +1,8 @@
 import torch
 from torch.autograd import Function
+from torch.autograd import Variable
 from ..box_utils import decode, nms
-from data import voc as cfg
+from data import VARIANCE
 
 
 class Detect(Function):
@@ -19,7 +20,7 @@ class Detect(Function):
         if nms_thresh <= 0:
             raise ValueError('nms_threshold must be non negative.')
         self.conf_thresh = conf_thresh
-        self.variance = cfg['variance']
+        self.variance = VARIANCE
 
     def forward(self, loc_data, conf_data, prior_data):
         """
@@ -39,7 +40,8 @@ class Detect(Function):
 
         # Decode predictions into bboxes.
         for i in range(num):
-            decoded_boxes = decode(loc_data[i], prior_data, self.variance)
+            #print('debug locate------', i, '\n', loc_data[i][-1], '\n', prior_data[-1])
+            decoded_boxes = decode(loc_data[i], prior_data, self.variance)   #
             # For each class, perform nms
             conf_scores = conf_preds[i].clone()
 

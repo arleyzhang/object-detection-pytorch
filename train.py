@@ -1,7 +1,10 @@
+# -*- coding:utf-8 -*-
 from data import *
-from utils.augmentations import SSDAugmentation
 from layers.modules import MultiBoxLoss, MultiBoxLossSSD
-from ssd import build_ssd
+
+from utils import EvalSolver, Timer, SSDAugmentation
+from models.model_build import creat_model
+
 import os
 import sys
 import time
@@ -18,19 +21,18 @@ import argparse
 def str2bool(v):
     return v.lower() in ("yes", "true", "t", "1")
 
-
 parser = argparse.ArgumentParser(
     description='Single Shot MultiBox Detector Training With Pytorch')
 train_set = parser.add_mutually_exclusive_group()
-parser.add_argument('--dataset', default='VOC', choices=['VOC', 'COCO'],   #################dataset type
+parser.add_argument('--dataset', default='VOC', choices=['VOC', 'COCO'],    #################dataset type
                     type=str, help='VOC or COCO')
 parser.add_argument('--dataset_root', default=VOC_ROOT,
                     help='Dataset root directory path')
-parser.add_argument('--basenet', default='vgg16_reducedfc.pth', #######init weights， #ssd_VOC_180621_40000
+parser.add_argument('--basenet', default='vgg16_reducedfc.pth',    #######init weights， #ssd_VOC_180621_40000
                     help='Pretrained base model')   #vgg16_reducedfc
 parser.add_argument('--batch_size', default=32, type=int,    ########################test is 8 default=32
                     help='Batch size for training')
-parser.add_argument('--resume', default=None, type=str, #####################resume from snapshot
+parser.add_argument('--resume', default=None, type=str,    #####################resume from snapshot
                     help='Checkpoint state_dict file to resume training from')
 parser.add_argument('--start_iter', default=0, type=int,
                     help='Resume training at this iter')
@@ -38,7 +40,7 @@ parser.add_argument('--num_workers', default=4, type=int,
                     help='Number of workers used in dataloading')
 parser.add_argument('--cuda', default=True, type=str2bool,
                     help='Use CUDA to train model')
-parser.add_argument('--lr', '--learning-rate', default=1e-3, type=float,
+parser.add_argument('--lr', '--learning-rate', default=1e-3, type=float,    ############test lr
                     help='initial learning rate')
 parser.add_argument('--momentum', default=0.9, type=float,
                     help='Momentum value for optim')
@@ -48,19 +50,28 @@ parser.add_argument('--gamma', default=0.1, type=float,
                     help='Gamma update for SGD')
 parser.add_argument('--visdom', default=False, type=str2bool,
                     help='Use visdom for loss visualization')
-parser.add_argument('--save_folder', default='../../weights/',  ################ snapshot or pretrained
+parser.add_argument('--save_folder', default='../../weights/',    ################ snapshot and pretrained path
                     help='Directory for saving checkpoint models')
 parser.add_argument('--loss_type', default='ssd_loss', type=str,    ########## loss type
                     help='ssd_loss or repul_loss')
 args = parser.parse_args()
 
 ###################################################  some configs need to update
-snapshot_prefix = 'ssd_VOC_180625_'
-step_index = 0  #need put in args ???
-args.resume = '../../weights/ssd_VOC_180625_45000.pth'
-# args.start_iter = 45000
-    
-CUDA_VISIBLE_DEVICES="6,5,4,3"              #############Specified GPUs range
+snapshot_prefix = 'ssd_voc_eval0705_'
+args.dataset = 'VOC'
+cfg = ssd_voc_vgg
+
+test_interval = 20000
+snapshot = 5000
+step_index = 0  #need put in args ???#ssd_voc_nocudnn0703_115000
+run_break = -10
+args.lr = 1e-3
+#args.resume = '../../weights/ssd_VOC_180628_10000.pth' #tmp2
+
+cudnn_benchmark = False
+torch.backends.cudnn.enabled = True   #cudnn switch
+
+CUDA_VISIBLE_DEVICES="5,4,6,7"  #Specified GPUs range
 os.environ["CUDA_VISIBLE_DEVICES"] = CUDA_VISIBLE_DEVICES
 
 if torch.cuda.is_available():
@@ -76,9 +87,40 @@ else:
 if not os.path.exists(args.save_folder):    #snapshot and save_model
     os.mkdir(args.save_folder)
 
+def load_filtered_state_dict(model, snapshot=None):
+    # By user apaszke from discuss.pytorch.org
+    print('debug-----')
+    model_dict = model.state_dict()
+    # snapshot = {k: v for k, v in snapshot.items() if k in model_dict}
+    # model_dict.update(snapshot)
+    # model.load_state_dict(model_dict)
+    for k in model_dict:
+        print(k)
+    print('////////////////')
+    for k, v in snapshot.items():
+        print(k)
+
+def init_new_model(save_folder, basenet):   ######bug bug!!!
+    net_ = creat_model('train', cfg)
+    net_.train()
+    vgg_weights = torch.load(save_folder + basenet)
+    print('Loading base network...')
+    net_.vgg.load_state_dict(vgg_weights)   #########################later vgg >> base
+
+    print('Initializing extra weights...')
+    # initialize newly added layers' weights with xavier method
+    net_.extras.apply(weights_init)
+    net_.loc.apply(weights_init)
+    net_.conf.apply(weights_init)
+
+     #load_filtered_state_dict(net_)
+    print('Create new model...')
+    #if not os.path.isfile(args.save_folder+'tmp.pth'):
+    torch.save(net_.state_dict(), save_folder+'tmp.pth')
+    return save_folder+'tmp.pth'
 
 def train():
-    global step_index
+    global step_index, iteration
 
     if args.dataset == 'COCO':
         if args.dataset_root == VOC_ROOT:
@@ -87,53 +129,58 @@ def train():
         #     print("WARNING: Using default COCO dataset_root because " +
         #           "--dataset_root was not specified.")
              args.dataset_root = COCO_ROOT
-        cfg = coco
         dataset = COCODetection(root=args.dataset_root,
                                 transform=SSDAugmentation(cfg['min_dim'],
                                                           MEANS))
+        
     elif args.dataset == 'VOC':
         # if args.dataset_root == COCO_ROOT:
         #     parser.error('Must specify dataset if specifying dataset_root')
-        cfg = voc
-        dataset = VOCDetection(root=args.dataset_root,
+        dataset = VOCDetection(args.dataset_root, [('2007', 'trainval'), ('2012', 'trainval')],
                                transform=SSDAugmentation(cfg['min_dim'],
                                                          MEANS))
+        val_dataset = VOCDetection(args.dataset_root, [('2007', 'test')],
+                           BaseTransform(300, MEANS),
+                           target_transform=VOCAnnotationTransform(False))
 
     if args.visdom:
         import visdom
         viz = visdom.Visdom()
 
-    ssd_net = build_ssd('train', cfg['min_dim'], cfg['num_classes'])
+    ssd_net = creat_model('train', cfg)
     net = ssd_net
-
     if args.cuda:
         net = torch.nn.DataParallel(ssd_net)    #device_ids=[0,1,2,3]
-        cudnn.benchmark = True
+        cudnn.benchmark = cudnn_benchmark
 
     if args.resume:
         print('Resuming training, loading {}...'.format(args.resume))
-        #ssd_net.load_weights(args.resume)
+        #ssd_net.load_state_dict(torch.load(args.resume))
         checkpoint = torch.load(args.resume)
         args.start_iter = checkpoint['iteration']
         step_index = checkpoint['step_index']
         ssd_net.load_state_dict(checkpoint['state_dict'])
+        
+        #load_filtered_state_dict(ssd_net, torch.load(args.resume))
     else:
+        # init_model_file = init_new_model(args.save_folder, args.basenet)
+        # ssd_net.load_state_dict(torch.load(init_model_file))
         vgg_weights = torch.load(args.save_folder + args.basenet)
         print('Loading base network...')
-        ssd_net.vgg.load_state_dict(vgg_weights)
+        ssd_net.vgg.load_state_dict(vgg_weights)   #########################later vgg >> base
 
-    if args.cuda:
-        net = net.cuda()
-
-    if not args.resume:
-        print('Initializing weights...')
+        print('Initializing extra weights...')
         # initialize newly added layers' weights with xavier method
         ssd_net.extras.apply(weights_init)
         ssd_net.loc.apply(weights_init)
         ssd_net.conf.apply(weights_init)
+    
+    if args.cuda:
+        net = net.cuda()
 
     optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=args.momentum,
                           weight_decay=args.weight_decay)
+    
     ###################################################################### loss type
     if args.loss_type == 'repul_loss':
         criterion = MultiBoxLoss(cfg['num_classes'], 0.5, True, 0, True, 3, 0.5,
@@ -142,21 +189,18 @@ def train():
         criterion = MultiBoxLossSSD(cfg['num_classes'], 0.5, True, 0, True, 3, 0.5,
                                 False, args.cuda)
 
-    if not args.start_iter in cfg['lr_steps'] and step_index != 0:  #consider 8w, 12w...
+    if step_index != 0:  #consider 8w, 12w...   #not iteration in cfg['lr_steps'] and 
         adjust_learning_rate(optimizer, args.gamma, step_index)
 
-    net.train()
     # loss counters
     loc_loss = 0
     conf_loss = 0
     repul_loss = 0
     epoch = 0
     print('Loading the dataset...')
-
-    epoch_size = len(dataset) // args.batch_size
     print('Training SSD on:', dataset.name)
     print('Using the specified args:')
-    print(args)
+    print(args, 'Gpus: ' + CUDA_VISIBLE_DEVICES)
 
 
     if args.visdom:
@@ -165,94 +209,135 @@ def train():
         iter_plot = create_vis_plot('Iteration', 'Loss', vis_title, vis_legend)
         epoch_plot = create_vis_plot('Epoch', 'Loss', vis_title, vis_legend)
 
+    #collate_fn=detection_collate  is important
     data_loader = data.DataLoader(dataset, args.batch_size,
                                   num_workers=args.num_workers,
                                   shuffle=True, collate_fn=detection_collate,
                                   pin_memory=True)
+    
+    val_loader = data.DataLoader(val_dataset, args.batch_size,
+                                  num_workers=args.num_workers,
+                                  shuffle=False, collate_fn=detection_collate,
+                                  pin_memory=True)
+    #add eval_solver#######################################################
+    eval_solver = EvalSolver(val_loader, len(val_dataset),args.save_folder, cfg)
+    #timers
+    timers = {'iter_time': Timer(), 'eval_time': Timer()}
+    timers['iter_time'].tic()
     # create batch iterator
-    batch_iterator = iter(data_loader)
-    for iteration in range(args.start_iter, cfg['max_iter']):
-        if args.visdom and iteration != 0 and (iteration % epoch_size == 0):
-            update_vis_plot(epoch, loc_loss, conf_loss, epoch_plot, None,
-                            'append', epoch_size)
-            # reset epoch loss counters
-            loc_loss = 0
-            conf_loss = 0
-            repul_loss = 0
-            epoch += 1
+    #batch_iterator = iter(data_loader)
 
-        if iteration in cfg['lr_steps']:
-            step_index += 1
-            adjust_learning_rate(optimizer, args.gamma, step_index)
+    net.train()
+    iteration = args.start_iter
+    #for iteration in range(args.start_iter, cfg['max_iter']):
+    epoch_size = len(dataset) // args.batch_size    #517
+    num_epochs = cfg['max_iter'] // epoch_size + 1  #232+1
+    for epoch in range(num_epochs):
+        for i, (images, targets, _, _,) in enumerate(data_loader):
+            if images.size(0) < args.batch_size: continue
+            
+            # if args.visdom and iteration != 0 and (iteration % epoch_size == 0):
+            #     update_vis_plot(epoch, loc_loss, conf_loss, epoch_plot, None,
+            #                     'append', epoch_size)
+            #     # reset epoch loss counters
+            #     loc_loss = 0
+            #     conf_loss = 0
+            #     repul_loss = 0
+            #     epoch += 1
+            
+            if iteration in cfg['lr_steps'] and iteration != args.start_iter:
+                step_index += 1
+                adjust_learning_rate(optimizer, args.gamma, step_index)
+            
+            #record time
+            # timers['prepro_time'].tic()
+            # # load train data
+            # images, targets, _, _ = data
+            # try:
+            #     images, targets, _, _ = next(batch_iterator)
+            # except StopIteration:
+            #     batch_iterator = iter(data_loader)
+            #     images, targets, _, _ = next(batch_iterator)
+            # timers['prepro_time'].toc()
 
-        # load train data
-        try:
-            images, targets = next(batch_iterator)
-        except StopIteration:
-            batch_iterator = iter(data_loader)
-            images, targets = next(batch_iterator)
-
-        if args.cuda:
-            images = Variable(images.cuda())
-            targets = [Variable(ann.cuda(), volatile=True) for ann in targets]
-        else:
-            images = Variable(images)
-            targets = [Variable(ann, volatile=True) for ann in targets]
-        # forward
-        t0 = time.time()
-        out = net(images)
-        # backprop
-        optimizer.zero_grad()
-        
-        if args.loss_type == 'ssd_loss':
-            loss_l, loss_c = criterion(out, targets)    #######ssd loss        
-            loss = loss_l + loss_c
-
-        elif args.loss_type == 'repul_loss':
-            loss_l, loss_l_repul, loss_c = criterion(out, targets)   #######repul loss
-            loss = loss_l + loss_c + loss_l_repul
-            repul_loss += loss_l_repul.data[0]
-
-        loss.backward()
-        optimizer.step()
-
-        t1 = time.time()
-        loc_loss += loss_l.data[0]
-        conf_loss += loss_c.data[0]
-
-        if iteration % 10 == 0:
-            print('timer: %.4f sec.' % (t1 - t0), '  lr: ',optimizer.param_groups[0]['lr'])
-
+            if args.cuda:
+                images = Variable(images.cuda())
+                targets = [Variable(ann.cuda(), volatile=True) for ann in targets]
+            else:
+                images = Variable(images)
+                targets = [Variable(ann, volatile=True) for ann in targets]
+            # forward
+            out = net(images)
+            # backprop
+            optimizer.zero_grad()
+            
             if args.loss_type == 'ssd_loss':
-                print('Iteration ' + repr(iteration) + ' || Loss: %.4f ||' % (loss.data[0]) +\
-                ' || conf_loss: %.4f' % (loss_c.data[0]) + ' || smoothl1 loss: %.4f ' % (loss_l.data[0]),\
-                end=' ')
+                loss_l, loss_c = criterion(out, targets)    #######ssd loss        
+                loss = loss_l + loss_c
+
             elif args.loss_type == 'repul_loss':
-                print('Iteration ' + repr(iteration) + ' || Loss: %.4f ' % (loss.data[0]) +\
-                ' || conf_loss: %.4f ' % (loss_c.data[0]) + ' || smoothl1 loss: %.4f ' % (loss_l.data[0]) +\
-                ' || repul_loss: %.4f ||' % (loss_l_repul.data[0]), end=' ')
+                loss_l, loss_l_repul, loss_c = criterion(out, targets)   #######repul loss
+                loss = loss_l + loss_c + loss_l_repul
+                repul_loss += loss_l_repul.data[0]
 
-        if args.visdom:
-            update_vis_plot(iteration, loss_l.data[0], loss_l_repul.data[0], loss_c.data[0], 
-                            iter_plot, epoch_plot, 'append')
+            loss.backward()
+            optimizer.step()
 
-         #save model
-        if (iteration != args.start_iter and iteration % 5000 == 0):
-            print('Saving state, iter:', iteration)
-            save_checkpoint({'iteration': iteration,
-                            'step_index': step_index,
-                            'state_dict': ssd_net.state_dict()},
-                            args.save_folder,
-                            snapshot_prefix+repr(iteration) + '.pth')
-        if iteration == cfg['max_iter'] - 1:    #save model in end of training
-            print('Saving state, iter:', iteration)
-            save_checkpoint({'iteration': iteration,
+            timers['iter_time'].toc()
+            timers['iter_time'].tic()
+
+            loc_loss += loss_l.data[0]
+            conf_loss += loss_c.data[0]
+
+            if iteration % 10 == 0:
+                if args.loss_type == 'ssd_loss':
+                    print('Iteration ' + repr(iteration) + ' || Loss: %.4f' % (loss.data[0]) +\
+                    ' || conf_loss: %.4f' % (loss_c.data[0]) + ' || smoothl1 loss: %.4f' % (loss_l.data[0]),\
+                    end=' ')
+                elif args.loss_type == 'repul_loss':
+                    print('Iteration ' + repr(iteration) + ' || Loss: %.4f' % (loss.data[0]) +\
+                    ' || conf_loss: %.4f' % (loss_c.data[0]) + ' || smoothl1 loss: %.4f' % (loss_l.data[0]) +\
+                    ' || repul_loss: %.4f' % (loss_l_repul.data[0]), end=' ')
+                
+                current_date = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+                print('timer: %.4f/%.4f/%.4f s' %  (timers['iter_time'].diff, timers['iter_time'].average_time,\
+                    0), '|| sys_date:', current_date, '|| lr:',\
+                    optimizer.param_groups[0]['lr'])
+            
+            if args.visdom:
+                update_vis_plot(iteration, loss_l.data[0], loss_l_repul.data[0], loss_c.data[0], 
+                                iter_plot, epoch_plot, 'append')
+
+            #save model ssd_net.state_dict()? net.?
+            if (iteration % snapshot == 0 and iteration != args.start_iter):
+                print('Saving state, iter:', iteration)
+                save_checkpoint({'iteration': iteration,
+                                'step_index': step_index,
+                                'state_dict': ssd_net.state_dict()},
+                                args.save_folder,
+                                snapshot_prefix+repr(iteration) + '.pth')
+            #save model in end of training
+            if iteration == cfg['max_iter'] - 1:
+                save_checkpoint({'iteration': iteration,
                             'step_index': step_index,
                             'state_dict': ssd_net.state_dict()},
                             args.save_folder,
                             snapshot_prefix+repr(cfg['max_iter']) + '.pth')
-    
-
+                return 0
+            
+             ###eval model   ##################################
+            if iteration % test_interval == 0 and iteration != args.start_iter:
+                print('Start eval ......')
+                net.eval()
+                timers['eval_time'].tic()
+                mAP = eval_solver.validate(net)
+                timers['eval_time'].toc()
+                print('Iteration ' + repr(iteration) + ' || mAP: %.3f' % (mAP) + ' ||eval_time: %.4f/%.4f' %
+                    (timers['eval_time'].diff, timers['eval_time'].average_time))
+                net.train()
+            
+            if iteration == run_break + args.start_iter: return 0
+            iteration += 1
 
 def save_checkpoint(state, path, name):
     path_name = os.path.join(path, name)

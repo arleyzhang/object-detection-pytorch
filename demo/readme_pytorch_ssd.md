@@ -4,9 +4,10 @@
 1.1 配置anaconda, 并安装python3+（目前pytorch_ssd只支持python3）
     conda create --name your_env_name python=3.5
 1.2 conda环境变量下，安装torch和torchvision，安装指定版本（0.3.1）：
-    conda install pytorch=0.3.1  
+    配置opencv: conda install -c https://conda.anaconda.org/menpo opencv3 (能确保安装对应版本的mkl库)
+    (pip用清华源快点, torch=0.3.1, torchvision=0.2.1)
 
-2 代码： https://github.com/amdegroot/ssd.pytorch
+2 初始代码： https://github.com/amdegroot/ssd.pytorch
 
 3 训练准备：
 3.1 数据（从服务器scp）
@@ -36,7 +37,6 @@
     Hint: 每次预测会生成标注文件的缓存
 
 
-6 train on coco
+6 train on coco 需要的依赖包
 6.1 pip install "git+https://github.com/philferriere/cocoapi.git#egg=pycocotools&subdirectory=PythonAPI"
     6.1.1 pre-install: cython
-

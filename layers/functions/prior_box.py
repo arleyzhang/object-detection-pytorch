@@ -27,12 +27,12 @@ class PriorBox(object):
 
     def forward(self):
         mean = []
-        for k, f in enumerate(self.feature_maps):
-            for i, j in product(range(f), repeat=2):
+        for k, f in enumerate(self.feature_maps):   #[38, 19, 10, 5, 3, 1]
+            for i, j in product(range(f), repeat=2):#(0,0) (0,1)... (37,37)
                 f_k = self.image_size / self.steps[k]
                 # unit center x,y
-                cx = (j + 0.5) / f_k
-                cy = (i + 0.5) / f_k
+                cx = (j + 0.5) / f_k    #col
+                cy = (i + 0.5) / f_k    #row
 
                 # aspect_ratio: 1
                 # rel size: min_size
