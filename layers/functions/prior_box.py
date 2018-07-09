@@ -20,6 +20,7 @@ class PriorBox(object):
         self.steps = cfg['steps']
         self.aspect_ratios = cfg['aspect_ratios']
         self.clip = cfg['clip']
+        self.flip = cfg['flip']
         self.version = cfg['name']
         for v in self.variance:
             if v <= 0:
@@ -43,13 +44,18 @@ class PriorBox(object):
 
                         # aspect_ratio: 1
                         # rel size: sqrt(s_k * s_(k+1))
-                        s_k_prime = sqrt(s_k * (self.max_sizes[k][m]/self.image_size))
-                        mean += [cx, cy, s_k_prime, s_k_prime]
+                        if len(self.max_sizes) > 0:
+                            s_k_prime = sqrt(s_k * (self.max_sizes[k][m]/self.image_size))
+                            mean += [cx, cy, s_k_prime, s_k_prime]
 
                         # rest of aspect ratios
-                        for ar in self.aspect_ratios[k]:
-                            mean += [cx, cy, s_k*sqrt(ar), s_k/sqrt(ar)]
-                            mean += [cx, cy, s_k/sqrt(ar), s_k*sqrt(ar)]
+                        if self.flip:
+                            for ar in self.aspect_ratios[k]:
+                                mean += [cx, cy, s_k*sqrt(ar), s_k/sqrt(ar)]
+                                mean += [cx, cy, s_k/sqrt(ar), s_k*sqrt(ar)]
+                        else:
+                            for ar in self.aspect_ratios[k]:
+                                mean += [cx, cy, s_k*sqrt(ar), s_k/sqrt(ar)]
 
                 else:
                     # aspect_ratio: 1
@@ -59,13 +65,18 @@ class PriorBox(object):
 
                     # aspect_ratio: 1
                     # rel size: sqrt(s_k * s_(k+1))
-                    s_k_prime = sqrt(s_k * (self.max_sizes[k]/self.image_size))
-                    mean += [cx, cy, s_k_prime, s_k_prime]
+                    if len(self.max_sizes) > 0:
+                        s_k_prime = sqrt(s_k * (self.max_sizes[k]/self.image_size))
+                        mean += [cx, cy, s_k_prime, s_k_prime]
 
                     # rest of aspect ratios
-                    for ar in self.aspect_ratios[k]:
-                        mean += [cx, cy, s_k*sqrt(ar), s_k/sqrt(ar)]
-                        mean += [cx, cy, s_k/sqrt(ar), s_k*sqrt(ar)]
+                    if self.flip:
+                        for ar in self.aspect_ratios[k]:
+                            mean += [cx, cy, s_k*sqrt(ar), s_k/sqrt(ar)]
+                            mean += [cx, cy, s_k/sqrt(ar), s_k*sqrt(ar)]
+                    else:
+                        for ar in self.aspect_ratios[k]:
+                            mean += [cx, cy, s_k*sqrt(ar), s_k/sqrt(ar)]
         # back to torch land
         output = torch.Tensor(mean).view(-1, 4)
         if self.clip:
