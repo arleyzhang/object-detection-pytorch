@@ -47,8 +47,8 @@ class SSD(nn.Module):
         self.conf = nn.ModuleList(head[1])
 
         self.softmax = nn.Softmax(dim=-1)
-        #if phase == 'test':
-        self.detect = Detect(self.num_classes, 0, 200, 0.01, 0.45)
+        if self.phase == 'test':
+            self.detect = Detect(self.num_classes, 0, 200, 0.01, 0.45)
 
     def forward(self, x, phase='train'):
         """Applies network layers and ops on input image(s) x.
@@ -99,28 +99,29 @@ class SSD(nn.Module):
         loc = torch.cat([o.view(o.size(0), -1) for o in loc], 1)
         conf = torch.cat([o.view(o.size(0), -1) for o in conf], 1)
         if self.phase == "test":
-            timer = Timer()
-            timer.tic()
+            #timer = Timer()
+            #timer.tic()
             output = self.detect(
                 loc.view(loc.size(0), -1, 4),                   # loc preds
                 self.softmax(conf.view(conf.size(0), -1,
                              self.num_classes)),                # conf preds
                 self.priors.type(type(x.data))                  # default boxes
             )
-            timer.toc()
-            print("test detect time----", timer.diff)
+            #timer.toc()
+            #print("test detect time----", timer.diff)
         elif phase == 'eval':
             output = (
                 loc.view(loc.size(0), -1, 4),                   # loc preds
                 self.softmax(conf.view(conf.size(0), -1,
                              self.num_classes)),                # conf preds
+                                                        # priors Shape: [2,num_priors,4] ????
             )
             #print("eval----", self.priors.size())
         else:
             output = (
                 loc.view(loc.size(0), -1, 4),
                 conf.view(conf.size(0), -1, self.num_classes),
-                self.priors     # Shape: [2,num_priors*4] ????
+                self.priors
             )
         return output
 

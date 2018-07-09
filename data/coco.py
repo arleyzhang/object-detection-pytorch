@@ -45,8 +45,9 @@ class COCOAnnotationTransform(object):
     """Transforms a COCO annotation into a Tensor of bbox coords and label index
     Initilized with a dictionary lookup of classnames to indexes
     """
-    def __init__(self):
+    def __init__(self, is_scale=True):
         self.label_map = get_label_map(osp.join(COCO_ROOT, 'coco_labels.txt'))
+        self.is_scale = is_scale
 
     def __call__(self, target, width, height):
         """
@@ -65,7 +66,10 @@ class COCOAnnotationTransform(object):
                 bbox[2] += bbox[0]
                 bbox[3] += bbox[1]
                 label_idx = self.label_map[obj['category_id']] - 1
-                final_box = list(np.array(bbox)/scale)  #scale to [0, 1]
+                if self.is_scale:
+                    final_box = list(np.array(bbox)/scale)  #scale to [0, 1]
+                else:
+                    final_box = list(np.array(bbox))
                 final_box.append(label_idx)
                 res += [final_box]  # [xmin, ymin, xmax, ymax, label_idx]
             else:
@@ -224,8 +228,8 @@ class COCODetection(data.Dataset):
             tuple: Tuple (image, target).
                    target is the object returned by ``coco.loadAnns``.
         """
-        im, gt, h, w = self.pull_item(index)
-        return im, gt, h, w
+        im, gt, h, w, loc_t, conf_t = self.pull_item(index)
+        return im, gt, h, w, -1 ,-1
 
     def __len__(self):
         return len(self.ids)
@@ -262,7 +266,7 @@ class COCODetection(data.Dataset):
             img = img[:, :, (2, 1, 0)]
 
             target = np.hstack((boxes, np.expand_dims(labels, axis=1)))
-        return torch.from_numpy(img).permute(2, 0, 1), target, height, width    #c h w
+        return torch.from_numpy(img).permute(2, 0, 1), target, height, width, -1, -1    #c h w
 
     def pull_image(self, index):
         '''Returns the original image object at index in PIL form

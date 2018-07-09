@@ -4,7 +4,6 @@ from torch.autograd import Variable
 from ..box_utils import decode, nms
 from data import VARIANCE
 
-
 class Detect(Function):
     """At test time, Detect is the final layer of SSD.  Decode location preds,
     apply non-maximum suppression to location predictions based on conf

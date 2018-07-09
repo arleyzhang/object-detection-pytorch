@@ -1,8 +1,9 @@
 # -*- coding:utf-8 -*-
 from data import *
 from layers.modules import MultiBoxLoss, MultiBoxLossSSD
+from layers.functions import PriorBox
 
-from utils import EvalSolver, Timer, SSDAugmentation
+from utils import * #EvalSolver, Timer, SSDAugmentation
 from models.model_build import creat_model
 
 import os
@@ -57,16 +58,18 @@ parser.add_argument('--loss_type', default='ssd_loss', type=str,    ########## l
 args = parser.parse_args()
 
 ###################################################  some configs need to update
-snapshot_prefix = 'ssd_voc_eval0705_'
+snapshot_prefix = 'ssd_voc_evaltmp_'
 args.dataset = 'VOC'
+
 cfg = ssd_voc_vgg
 
 test_interval = 20000
 snapshot = 5000
 step_index = 0  #need put in args ???#ssd_voc_nocudnn0703_115000
-run_break = -10
+run_break = 2000
 args.lr = 1e-3
-#args.resume = '../../weights/ssd_VOC_180628_10000.pth' #tmp2
+args.num_workers = 48
+#args.resume = '../../weights/ssd_coco_eval0707_35000.pth' #tmp2
 
 cudnn_benchmark = False
 torch.backends.cudnn.enabled = True   #cudnn switch
@@ -87,58 +90,29 @@ else:
 if not os.path.exists(args.save_folder):    #snapshot and save_model
     os.mkdir(args.save_folder)
 
-def load_filtered_state_dict(model, snapshot=None):
-    # By user apaszke from discuss.pytorch.org
-    print('debug-----')
-    model_dict = model.state_dict()
-    # snapshot = {k: v for k, v in snapshot.items() if k in model_dict}
-    # model_dict.update(snapshot)
-    # model.load_state_dict(model_dict)
-    for k in model_dict:
-        print(k)
-    print('////////////////')
-    for k, v in snapshot.items():
-        print(k)
-
-def init_new_model(save_folder, basenet):   ######bug bug!!!
-    net_ = creat_model('train', cfg)
-    net_.train()
-    vgg_weights = torch.load(save_folder + basenet)
-    print('Loading base network...')
-    net_.vgg.load_state_dict(vgg_weights)   #########################later vgg >> base
-
-    print('Initializing extra weights...')
-    # initialize newly added layers' weights with xavier method
-    net_.extras.apply(weights_init)
-    net_.loc.apply(weights_init)
-    net_.conf.apply(weights_init)
-
-     #load_filtered_state_dict(net_)
-    print('Create new model...')
-    #if not os.path.isfile(args.save_folder+'tmp.pth'):
-    torch.save(net_.state_dict(), save_folder+'tmp.pth')
-    return save_folder+'tmp.pth'
 
 def train():
     global step_index, iteration
 
     if args.dataset == 'COCO':
         if args.dataset_root == VOC_ROOT:
-        #     if not os.path.exists(COCO_ROOT):
-        #         parser.error('Must specify dataset_root if specifying dataset')
-        #     print("WARNING: Using default COCO dataset_root because " +
-        #           "--dataset_root was not specified.")
              args.dataset_root = COCO_ROOT
+        
         dataset = COCODetection(root=args.dataset_root,
                                 transform=SSDAugmentation(cfg['min_dim'],
                                                           MEANS))
-        
+        val_dataset = COCODetection(args.dataset_root, ['minival'],
+                           BaseTransform(300, MEANS),
+                           target_transform=COCOAnnotationTransform(False))
     elif args.dataset == 'VOC':
-        # if args.dataset_root == COCO_ROOT:
-        #     parser.error('Must specify dataset if specifying dataset_root')
-        dataset = VOCDetection(args.dataset_root, [('2007', 'trainval'), ('2012', 'trainval')],
-                               transform=SSDAugmentation(cfg['min_dim'],
-                                                         MEANS))
+        priors = None
+
+        priorbox = PriorBox(cfg)
+        priors = priorbox.forward().cpu().numpy()
+
+        dataset = VOCDetection(args.dataset_root, [('2007', 'trainval'), ('2012', 'trainval')], #('2012', 'trainval')
+                               transform=SSDAugmentation(cfg['min_dim'],MEANS),
+                               priors = priors)
         val_dataset = VOCDetection(args.dataset_root, [('2007', 'test')],
                            BaseTransform(300, MEANS),
                            target_transform=VOCAnnotationTransform(False))
@@ -220,10 +194,8 @@ def train():
                                   shuffle=False, collate_fn=detection_collate,
                                   pin_memory=True)
     #add eval_solver#######################################################
-    eval_solver = EvalSolver(val_loader, len(val_dataset),args.save_folder, cfg)
-    #timers
-    timers = {'iter_time': Timer(), 'eval_time': Timer()}
-    timers['iter_time'].tic()
+    eval_solver = EvalSolver(val_loader, len(val_dataset), args.save_folder, cfg)
+
     # create batch iterator
     #batch_iterator = iter(data_loader)
 
@@ -232,8 +204,14 @@ def train():
     #for iteration in range(args.start_iter, cfg['max_iter']):
     epoch_size = len(dataset) // args.batch_size    #517
     num_epochs = cfg['max_iter'] // epoch_size + 1  #232+1
+
+    #timers
+    timers = {'iter_time': Timer(), 'eval_time': Timer(), 'prepro_time': Timer()}
+    timers['iter_time'].tic()
+    timers['prepro_time'].tic()
     for epoch in range(num_epochs):
-        for i, (images, targets, _, _,) in enumerate(data_loader):
+        for i, (images, targets, _, _, loc_t, conf_t) in enumerate(data_loader):
+            timers['prepro_time'].toc()
             if images.size(0) < args.batch_size: continue
             
             # if args.visdom and iteration != 0 and (iteration % epoch_size == 0):
@@ -244,7 +222,6 @@ def train():
             #     conf_loss = 0
             #     repul_loss = 0
             #     epoch += 1
-            
             if iteration in cfg['lr_steps'] and iteration != args.start_iter:
                 step_index += 1
                 adjust_learning_rate(optimizer, args.gamma, step_index)
@@ -271,8 +248,13 @@ def train():
             # backprop
             optimizer.zero_grad()
             
+            if loc_t.ndim == 1:
+                loc_t, conf_t = None, None
+            else:
+                loc_t = torch.from_numpy(loc_t)
+                conf_t = torch.from_numpy(conf_t).long()
             if args.loss_type == 'ssd_loss':
-                loss_l, loss_c = criterion(out, targets)    #######ssd loss        
+                loss_l, loss_c = criterion(out, targets, loc_t, conf_t)    #######ssd loss        
                 loss = loss_l + loss_c
 
             elif args.loss_type == 'repul_loss':
@@ -300,8 +282,8 @@ def train():
                     ' || repul_loss: %.4f' % (loss_l_repul.data[0]), end=' ')
                 
                 current_date = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-                print('timer: %.4f/%.4f/%.4f s' %  (timers['iter_time'].diff, timers['iter_time'].average_time,\
-                    0), '|| sys_date:', current_date, '|| lr:',\
+                print('timer: %.3f(%.3f)||%.3f(%.3f) s' %  (timers['iter_time'].diff, timers['iter_time'].average_time,\
+                    timers['prepro_time'].diff, timers['prepro_time'].average_time), '|| sys_date:', current_date, '|| lr:',\
                     optimizer.param_groups[0]['lr'])
             
             if args.visdom:
@@ -338,6 +320,7 @@ def train():
             
             if iteration == run_break + args.start_iter: return 0
             iteration += 1
+            timers['prepro_time'].tic()
 
 def save_checkpoint(state, path, name):
     path_name = os.path.join(path, name)
@@ -363,6 +346,18 @@ def weights_init(m):
         xavier(m.weight.data)
         m.bias.data.zero_()
 
+def load_filtered_state_dict(model, snapshot=None):
+    # By user apaszke from discuss.pytorch.org
+    print('debug-----')
+    model_dict = model.state_dict()
+    # snapshot = {k: v for k, v in snapshot.items() if k in model_dict}
+    # model_dict.update(snapshot)
+    # model.load_state_dict(model_dict)
+    for k in model_dict:
+        print(k)
+    print('////////////////')
+    for k, v in snapshot.items():
+        print(k)
 
 def create_vis_plot(_xlabel, _ylabel, _title, _legend):
     return viz.line(

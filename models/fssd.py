@@ -45,7 +45,7 @@ class FSSD(nn.Module):
 
         self.softmax = nn.Softmax(dim=-1)
 
-    def forward(self, x):
+    def forward(self, x, phase='train'):
         sources, transformed, pyramids, loc, conf = [list() for _ in range(5)]
 
         # apply bases layers and cache source layer outputs

@@ -15,7 +15,7 @@ from data import VOC_ROOT, VOCAnnotationTransform, VOCDetection, BaseTransform
 from data import VOC_CLASSES as labelmap
 from data.config import *
 from models.model_build import creat_model
-from utils import Timer
+from utils import *
 
 import sys
 import os
@@ -56,7 +56,7 @@ args = parser.parse_args()
 ###########################################
 # test with trained_model
 if args.trained_model is None:
-    args.trained_model = '../../weights/tmp2.pth'
+    args.trained_model = '../../weights/ssd_voc_eval0705_120000.pth'
 
 #Annotations for crownd #Annotations_src for normal voc
 annopath = os.path.join(args.voc_root, 'VOC2007', 'Annotations', '%s.xml')
@@ -372,7 +372,7 @@ def test_net(save_folder, net, cuda, dataset, transform, top_k,
     det_file = os.path.join(output_dir, 'detections.pkl')
 
     for i in range(num_images):
-        im, gt, h, w = dataset.pull_item(i)
+        im, gt, h, w, _, _ = dataset.pull_item(i)
 
         x = Variable(im.unsqueeze(0))
         if args.cuda:

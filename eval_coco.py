@@ -15,6 +15,7 @@ from data import COCODetection, COCOAnnotationTransform, COCO_CLASSES, COCO_ROOT
 from data import COCO_CLASSES as labelmap
 from data.config import *
 from models.model_build import creat_model
+from utils import *
 
 import sys
 import os
@@ -55,7 +56,7 @@ args = parser.parse_args()
 ###########################################
 # test with trained_model
 if args.trained_model is None:
-    args.trained_model = '../../weights/ssd_coco_0704_165000.pth'
+    args.trained_model = '../../weights/ssd_coco_eval0708_35000.pth'
 
 
 #Annotations for crownd #Annotations_src for normal voc
@@ -64,7 +65,7 @@ devkit_path = args.voc_root
 dataset_mean = (104, 117, 123)
 set_type = 'minival' #test_full   #test_crowd
 
-CUDA_VISIBLE_DEVICES="6"        #####################Specified GPUs range
+CUDA_VISIBLE_DEVICES="1"        #####################Specified GPUs range
 os.environ["CUDA_VISIBLE_DEVICES"] = CUDA_VISIBLE_DEVICES
 
 print ('data_path:', devkit_path, 'test_type:', set_type, 'test_model:', args.trained_model,\
@@ -83,29 +84,6 @@ if torch.cuda.is_available():
 else:
     torch.set_default_tensor_type('torch.FloatTensor')
 
-class Timer(object):
-    """A simple timer."""
-    def __init__(self):
-        self.total_time = 0.
-        self.calls = 0
-        self.start_time = 0.
-        self.diff = 0.
-        self.average_time = 0.
-
-    def tic(self):
-        # using time.time instead of time.clock because time time.clock
-        # does not normalize for multithreading
-        self.start_time = time.time()
-
-    def toc(self, average=True):
-        self.diff = time.time() - self.start_time
-        self.total_time += self.diff
-        self.calls += 1
-        self.average_time = self.total_time / self.calls
-        if average:
-            return self.average_time
-        else:
-            return self.diff
 
 def parse_rec(target, label_map):
     """ Parse a COCO target """
@@ -378,7 +356,7 @@ def test_net(save_folder, net, cuda, dataset, transform, top_k,
     det_file = os.path.join(output_dir, 'detections.pkl')
 
     for i in range(num_images):
-        im, gt, h, w = dataset.pull_item(i)
+        im, gt, h, w, _, _ = dataset.pull_item(i)
 
         x = Variable(im.unsqueeze(0))
         if args.cuda:
