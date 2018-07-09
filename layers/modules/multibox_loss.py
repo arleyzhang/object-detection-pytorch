@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
-from data import coco as cfg
+from data import VARIANCE
 from ..box_utils import match, log_sum_exp
 from .repulsion_loss import RepulsionLoss
 
@@ -48,7 +48,7 @@ class MultiBoxLoss(nn.Module):
         self.do_neg_mining = neg_mining  #True
         self.negpos_ratio = neg_pos #3
         self.neg_overlap = neg_overlap  #0.5
-        self.variance = cfg['variance']
+        self.variance = VARIANCE
 
     def forward(self, predictions, targets):
         """Multibox Loss

@@ -33,12 +33,16 @@ COCO_CLASSES = ('person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus',
 
 
 def get_label_map(label_file):
-    label_map = {}
-    labels = open(label_file, 'r')
-    for line in labels:
-        ids = line.split(',')
-        label_map[int(ids[0])] = int(ids[1])
-    return label_map
+    if os.path.isfile(label_file):
+        label_map = {}
+        labels = open(label_file, 'r')
+        for line in labels:
+            ids = line.split(',')
+            label_map[int(ids[0])] = int(ids[1])
+        return label_map
+    else:
+        print("Warning: can't train on COCO sets")
+        return None
 
 
 class COCOAnnotationTransform(object):

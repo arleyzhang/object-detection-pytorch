@@ -16,7 +16,7 @@ class RepulsionLoss(nn.Module):
     def __init__(self, use_gpu=True, sigma=0.):
         super(RepulsionLoss, self).__init__()
         self.use_gpu = use_gpu
-        self.variance = cfg['variance']
+        self.variance = VARIANCE
         self.sigma = sigma
         
     # TODO 
