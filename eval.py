@@ -10,6 +10,7 @@ import torch.nn as nn
 import torch.backends.cudnn as cudnn
 from torch.autograd import Variable
 from data import VOC_ROOT, VOCAnnotationTransform, VOCDetection, BaseTransform
+from data import voc, coco
 from data import VOC_CLASSES as labelmap
 import torch.utils.data as data
 
@@ -441,8 +442,9 @@ def evaluate_detections(box_list, output_dir, dataset):
 
 if __name__ == '__main__':
     # load net
-    num_classes = len(labelmap) + 1                      # +1 for background
-    net = build_ssd('test', 300, num_classes)            # initialize SSD
+    # num_classes = len(labelmap) + 1                      # +1 for background
+    cfg = voc
+    net = build_ssd('test', cfg)            # initialize SSD
     net.load_state_dict(torch.load(args.trained_model)['state_dict'])   #model is dict{}
     net.eval()
     print('Finished loading model!')

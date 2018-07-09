@@ -189,13 +189,32 @@ extras = {
     '300': [256, 'S', 512, 128, 'S', 256, 128, 256, 128, 256],
     '512': [],
 }
-mbox = {
-    '300': [4, 6, 6, 6, 4, 4],  # number of boxes per feature map location
-    '512': [],
-}
+
+# mbox = {
+#     '300': [4, 6, 6, 6, 4, 4],  # number of boxes per feature map location
+#     '512': [],
+# }
 
 
-def build_ssd(phase, size=300, num_classes=21):
+def build_ssd(phase, cfg):
+    size = cfg['min_dim']
+    num_classes = cfg['num_classes']
+    min_sizes = cfg['min_sizes']
+    max_sizes = cfg['max_sizes']
+    aspect_ratios = cfg['aspect_ratios']
+    flip = cfg['flip']
+    mbox = [0]*len(min_sizes)
+    for i in range(len(min_sizes)):
+        min_size = min_sizes[i]
+        if type(min_size) is not list:
+            min_size = [min_size]
+        mbox[i] = len(min_size) + len(aspect_ratios[i]) * len(min_size)
+        if len(max_sizes) > 0:
+            mbox[i] += len(min_size)
+        if flip:
+            mbox[i] += len(aspect_ratios[i]) * len(min_size)
+    print("number of boxes per feature map location:", mbox)
+
     if phase != "test" and phase != "train":
         print("ERROR: Phase: " + phase + " not recognized")
         return
@@ -205,5 +224,5 @@ def build_ssd(phase, size=300, num_classes=21):
         return
     base_, extras_, head_ = multibox(vgg(base[str(size)], 3),
                                      add_extras(extras[str(size)], 1024),
-                                     mbox[str(size)], num_classes)
+                                     mbox, num_classes)
     return SSD(phase, size, base_, extras_, head_, num_classes)

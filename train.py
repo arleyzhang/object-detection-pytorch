@@ -48,7 +48,7 @@ parser.add_argument('--gamma', default=0.1, type=float,
                     help='Gamma update for SGD')
 parser.add_argument('--visdom', default=False, type=str2bool,
                     help='Use visdom for loss visualization')
-parser.add_argument('--save_folder', default='../../weights/',  ################ snapshot or pretrained
+parser.add_argument('--save_folder', default='weights/',  ################ snapshot or pretrained
                     help='Directory for saving checkpoint models')
 parser.add_argument('--loss_type', default='ssd_loss', type=str,    ########## loss type
                     help='ssd_loss or repul_loss')
@@ -57,7 +57,7 @@ args = parser.parse_args()
 ###################################################  some configs need to update
 snapshot_prefix = 'ssd_VOC_180625_'
 step_index = 0  #need put in args ???
-args.resume = '../../weights/ssd_VOC_180625_45000.pth'
+#args.resume = '../../weights/ssd_VOC_180625_45000.pth'
 # args.start_iter = 45000
     
 CUDA_VISIBLE_DEVICES="6,5,4,3"              #############Specified GPUs range
@@ -103,7 +103,7 @@ def train():
         import visdom
         viz = visdom.Visdom()
 
-    ssd_net = build_ssd('train', cfg['min_dim'], cfg['num_classes'])
+    ssd_net = build_ssd('train', cfg)
     net = ssd_net
 
     if args.cuda:
