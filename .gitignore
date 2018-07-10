@@ -142,5 +142,6 @@ eval/
 *.log
 *.pyc
 *.pkl
+read*.py
 ._coco300_35k
 ####### end lei
