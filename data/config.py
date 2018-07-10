@@ -1,8 +1,10 @@
 # config.py
 import os.path
-
 # gets home dir cross platform
 HOME = os.path.expanduser("~")
+
+import cv2
+cv2.setNumThreads(0)    # pytorch issue 1355: possible deadlock in dataloader
 
 # for making bounding boxes pretty
 COLORS = ((255, 0, 0, 128), (0, 255, 0, 128), (0, 0, 255, 128),
@@ -16,7 +18,7 @@ VARIANCE = [0.1, 0.2]   #detection.py use it   multibox_loss_ssd.py
 ssd_voc_vgg = {
     'num_classes': 21,
     'lr_steps': (80000, 100000, 120000),
-    'max_iter': 120016,#120000,
+    'max_iter': 120000,#120000,
     'feature_maps': [38, 19, 10, 5, 3, 1],
     'min_dim': 300,
     'steps': [8, 16, 32, 64, 100, 300],
@@ -25,7 +27,7 @@ ssd_voc_vgg = {
     'aspect_ratios': [[2], [2, 3], [2, 3], [2, 3], [2], [2]],
     'variance': [0.1, 0.2],
     'clip': True,
-    'name': 'VOC',
+    'dataset_name': 'VOC',
     'base_model': 'vgg16',
     'ssds_type': 'ssd',
 }
@@ -42,7 +44,7 @@ ssd_coco_vgg = {
     'aspect_ratios': [[2], [2, 3], [2, 3], [2, 3], [2], [2]],
     'variance': [0.1, 0.2],
     'clip': True,
-    'name': 'COCO',
+    'dataset_name': 'COCO',
     'base_model': 'vgg16',
     'ssds_type': 'ssd',
 }
@@ -61,7 +63,7 @@ fssd_voc_vgg = {
     'aspect_ratios': [[2, 3], [2, 3], [2, 3], [2, 3], [2], [2]],    #6 6 6 6 4 4
     'variance': [0.1, 0.2],
     'clip': True,
-    'name': 'VOC',
+    'dataset_name': 'VOC',
     'base_model': 'vgg16',
     'ssds_type': 'fssd',
 }
@@ -78,7 +80,7 @@ fssd_coco_vgg = {
     'aspect_ratios': [[2], [2, 3], [2, 3], [2, 3], [2], [2]],
     'variance': [0.1, 0.2],
     'clip': True,
-    'name': 'COCO',
+    'dataset_name': 'COCO',
     'base_model': 'vgg16',
     'ssds_type': 'fssd',
 }

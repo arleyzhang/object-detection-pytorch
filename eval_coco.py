@@ -23,7 +23,9 @@ import time
 import argparse
 import numpy as np
 import pickle
+import copy
 import cv2
+
 
 if sys.version_info[0] == 2:
     import xml.etree.cElementTree as ET
@@ -56,8 +58,8 @@ args = parser.parse_args()
 ###########################################
 # test with trained_model
 if args.trained_model is None:
-    args.trained_model = '../../weights/ssd_coco_eval0708_35000.pth'
-
+    args.trained_model = '../../weights/ssd_coco_eval0710_10000.pth'
+    
 
 #Annotations for crownd #Annotations_src for normal voc
 
@@ -65,7 +67,7 @@ devkit_path = args.voc_root
 dataset_mean = (104, 117, 123)
 set_type = 'minival' #test_full   #test_crowd
 
-CUDA_VISIBLE_DEVICES="1"        #####################Specified GPUs range
+CUDA_VISIBLE_DEVICES="2"        #####################Specified GPUs range
 os.environ["CUDA_VISIBLE_DEVICES"] = CUDA_VISIBLE_DEVICES
 
 print ('data_path:', devkit_path, 'test_type:', set_type, 'test_model:', args.trained_model,\
@@ -85,8 +87,9 @@ else:
     torch.set_default_tensor_type('torch.FloatTensor')
 
 
-def parse_rec(target, label_map):
+def parse_rec(target_, label_map):
     """ Parse a COCO target """
+    target = copy.deepcopy(target_)
     objects = []
     for obj in target:
         if 'bbox' in obj:
@@ -132,7 +135,7 @@ def write_voc_results_file(all_boxes, dataset):
                 dets = all_boxes[cls_ind+1][im_ind]
                 if dets == []:
                     continue
-                imagename = str(dataset.dataset_train.image_info[index]["id"])
+                imagename = str(dataset.data_set.image_info[index]["id"])
                 #print('test-----', imagename, type(imagename))
                 # the VOCdevkit expects 1-based indices
                 for k in range(dets.shape[0]):
@@ -220,12 +223,6 @@ def voc_eval(detpath, label_file, dataset,classname, cachedir,
     [use_07_metric]: Whether to use VOC07's 11 point AP computation
     (default True)
     """
-# for i, cls in enumerate(labelmap):
-#         filename = get_voc_results_file_template(set_type, cls) #VOCdevkit/VOC2007/results/det_test_aeroplane.txt
-#         rec, prec, ap = voc_eval(
-#            filename, annopath, imgsetpath.format(set_type), cls, cachedir,
-#            ovthresh=0.5, use_07_metric=use_07_metric)#results, annoxml, test.txt, cls, cachedir
-# first load gt
     if not os.path.isdir(cachedir):
         os.mkdir(cachedir)
     cachefile = os.path.join(cachedir, 'annots.pkl')
@@ -240,8 +237,8 @@ def voc_eval(detpath, label_file, dataset,classname, cachedir,
         # load annots
         recs = {}
         for i, index in enumerate(dataset.ids):
-            imagename = str(dataset.dataset_train.image_info[index]["id"])
-            target = dataset.dataset_train.image_info[index]["annotations"]
+            imagename = str(dataset.data_set.image_info[index]["id"])
+            target = dataset.data_set.image_info[index]["annotations"]
 
             recs[imagename] = parse_rec(target, label_map)
             if i % 100 == 0:
@@ -251,16 +248,13 @@ def voc_eval(detpath, label_file, dataset,classname, cachedir,
         print('Saving cached annotations to {:s}'.format(cachefile))
         with open(cachefile, 'wb') as f:
             pickle.dump(recs, f)
-    # else:
-    #     # load
-    #     with open(cachefile, 'rb') as f:
-    #         recs = pickle.load(f)
 
     # extract gt objects for this class
     class_recs = {}
     npos = 0
     for index in dataset.ids:
-        imagename = str(dataset.dataset_train.image_info[index]["id"])
+        imagename = str(dataset.data_set.image_info[index]["id"])
+        
         R = [obj for obj in recs[imagename] if obj['name'] == classname]
         bbox = np.array([x['bbox'] for x in R])
         difficult = np.array([x['difficult'] for x in R]).astype(np.bool)
@@ -405,12 +399,9 @@ if __name__ == '__main__':
     net.eval()
     print('Finished loading model!')
     # load data
-    # dataset = VOCDetection(args.voc_root, [('2007', set_type)],
-    #                        BaseTransform(300, dataset_mean),
-    #                        VOCAnnotationTransform())
     dataset = COCODetection(args.voc_root, ['minival'],
                                 BaseTransform(300, dataset_mean),
-                                COCOAnnotationTransform())
+                                COCOAnnotationTransform(False))
     if args.cuda:
         net = net.cuda()
         cudnn.benchmark = True

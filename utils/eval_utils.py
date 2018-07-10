@@ -160,14 +160,14 @@ class EvalSolver(object):
         self.priors = Variable(self.priorbox.forward(), volatile=True)
         self.num_priors = self.priors.size(0)
 
-        self.gt_recs, is_readed = self.read_cachefile(cachedir, 'annots.pkl')
+        self.cachefile = os.path.join(cachedir, '{}_annots.pkl'.format(cfg['dataset_name']))
+        self.gt_recs, is_readed = self.read_cachefile(cachedir, self.cachefile)
         self.is_readed = is_readed
-        self.cachefile = os.path.join(cachedir, 'annots.pkl')
     
-    def read_cachefile(self, cachedir, file_name):
+    def read_cachefile(self, cachedir, cachefile):
         if not os.path.isdir(cachedir):
             os.mkdir(cachedir)
-        cachefile = os.path.join(cachedir, file_name)
+        #cachefile = os.path.join(cachedir, file_name)
         #record gt box
         if os.path.isfile(cachefile):
             with open(cachefile, 'rb') as f:
@@ -177,9 +177,6 @@ class EvalSolver(object):
             return {}, False
 
     def validate(self, net, criterion=None, use_cuda=True):
-        # switch to evaluate mode
-        #epoch_size = len(self.data_loader)
-        #batch_iterator = iter(self.data_loader)
 
         all_boxes = [[[] for _ in range(self.test_size)]
                  for _ in range(self.cfg['num_classes'])]
@@ -189,11 +186,9 @@ class EvalSolver(object):
 
         #print('all_boxes----', len(self.data_loader)) #10????
         img_idx = 0
-        #for iteration in iter(range((epoch_size))):
-        timers = {'pred_time': Timer(), 'detect_time': Timer(),
-                'allbox_time': Timer(), 'ap_time': Timer()}
-        for images, targets, heights, widths, _, _ in self.data_loader:
-            #images, targets, heights, widths = next(batch_iterator)
+        # timers = {'pred_time': Timer(), 'detect_time': Timer(),
+        #         'allbox_time': Timer(), 'ap_time': Timer()}
+        for (images, targets, heights, widths, _, _) in self.data_loader:
             if use_cuda:
                 images = Variable(images.cuda())
                 targets = [anno.numpy() for anno in targets]  #Variable(anno.cuda(), volatile=True) 
@@ -202,26 +197,27 @@ class EvalSolver(object):
                 images = Variable(images)
                 targets = [anno.numpy() for anno in targets]
             
-            timers['pred_time'].tic()
-            #loc, conf is Variable    "bug priors" torch.Size([17464, 4])
+            #timers['pred_time'].tic()
+            """
+            loc, conf is Variable    "bug priors" torch.Size([17464, 4])
             #torch.Size([32, 8732, 4]) torch.Size([32, 8732, 21])
+            """
             loc, conf= net(images, phase='eval')
-            timers['pred_time'].toc()
+            #timers['pred_time'].toc()
 
             # loss
             #loss_l, loss_c = criterion(out, targets)
 
-            # detect
-            timers['detect_time'].tic()
+            #timers['detect_time'].tic()
             #Variable  .data  convert to Tensor
-            detections = self.detector(loc, conf, self.priors)   #Shape(8,21,200,5)
-            detections = detections.data
-            timers['detect_time'].toc()
+            detections = self.detector(loc, conf, self.priors)  #run on a gpu
+            detections = detections.data    #Shape(8,21,200,5)
+            #timers['detect_time'].toc()
 
             #print('debug detections----', detections.size(), images.size())
             #print("debug p d time1: %.4f %.4f" % (timers['pred_time'].diff, timers['detect_time'].diff))
 
-            timers['allbox_time'].tic()
+            #timers['allbox_time'].tic()
             for batch_idx in range(images.size(0)): #imgs in batch
                 for cls_idx in range(1, detections.size(1)):  #skip bg class
                     dets = detections[batch_idx, cls_idx, :]
@@ -244,11 +240,11 @@ class EvalSolver(object):
                 if not self.is_readed:
                     self.gt_recs[img_idx] = parse_rec(targets[batch_idx])
                 img_idx += 1    #img index
-            timers['allbox_time'].toc()
+            #timers['allbox_time'].toc()
             # print("debug time2: ave=%.4f ave=%.4f %.4f" % (timers['pred_time'].average_time, timers['detect_time'].average_time, 
             #         timers['allbox_time'].diff))
         
-        timers['ap_time'].tic()
+        #timers['ap_time'].tic()
         aps = []
         for cls_idx in range(1, self.cfg['num_classes']):
             gt_class_recs = {}
@@ -265,7 +261,7 @@ class EvalSolver(object):
             rec, prec, ap = voc_eval(gt_class_recs, all_boxes[cls_idx], npos)
             aps += [ap]
             #print('eval class {}: {}'.format(cls_idx - 1, ap))
-        timers['ap_time'].toc()
+        #timers['ap_time'].toc()
         #print("debug mAP time3: %.4f" % (timers['ap_time'].diff))
         
         # save gt cachefile

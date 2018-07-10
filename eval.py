@@ -56,7 +56,8 @@ args = parser.parse_args()
 ###########################################
 # test with trained_model
 if args.trained_model is None:
-    args.trained_model = '../../weights/ssd_voc_eval0705_120000.pth'
+    args.trained_model = '../../weights/ssd_voc_best_120016.pth'
+cfg = ssd_voc_vgg
 
 #Annotations for crownd #Annotations_src for normal voc
 annopath = os.path.join(args.voc_root, 'VOC2007', 'Annotations', '%s.xml')
@@ -67,7 +68,7 @@ devkit_path = args.voc_root + 'VOC' + YEAR
 dataset_mean = (104, 117, 123)
 set_type = 'test' #test_full   #test_crowd
 
-CUDA_VISIBLE_DEVICES="6"        #####################Specified GPUs range
+CUDA_VISIBLE_DEVICES="1"        #####################Specified GPUs range
 os.environ["CUDA_VISIBLE_DEVICES"] = CUDA_VISIBLE_DEVICES
 
 print ('data_path:', devkit_path, 'test_type:', set_type, 'test_model:', args.trained_model,\
@@ -417,14 +418,14 @@ def evaluate_detections(box_list, output_dir, dataset):
 if __name__ == '__main__':
     # load net
     num_classes = len(labelmap) + 1                      # +1 for background
-    net = creat_model(phase='test', cfg=ssd_voc_vgg)            # initialize SSD
+    net = creat_model(phase='test', cfg=cfg)            # initialize SSD
     net.load_state_dict(torch.load(args.trained_model)['state_dict'])   #model is dict{}
     net.eval()
     print('Finished loading model!')
     # load data
     dataset = VOCDetection(args.voc_root, [('2007', set_type)],
                            BaseTransform(300, dataset_mean),
-                           VOCAnnotationTransform())
+                           VOCAnnotationTransform(False))
     if args.cuda:
         net = net.cuda()
         cudnn.benchmark = True

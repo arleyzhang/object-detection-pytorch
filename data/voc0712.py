@@ -5,7 +5,7 @@ https://github.com/fmassa/vision/blob/voc_dataset/torchvision/datasets/voc.py
 
 Updated by: Ellis Brown, Max deGroot
 """
-from .config import HOME, VARIANCE
+from .config import *   #HOME, VARIANCE
 import os.path as osp
 import sys
 import torch
@@ -72,7 +72,7 @@ class VOCAnnotationTransform(object):
                 bndbox.append(cur_pt)
             label_idx = self.class_to_ind[name]
             bndbox.append(label_idx)
-            res += [bndbox]  # [xmin, ymin, xmax, ymax, label_ind]
+            res += [bndbox]
             # img_id = target.find('filename').text[:-4]
 
         return res  # [[xmin, ymin, xmax, ymax, label_ind], ... ]
@@ -117,16 +117,14 @@ class VOCDetection(data.Dataset):
     
     def __getitem__(self, index):
         im, gt, h, w, loc_t, conf_t = self.pull_item(index)
-        #print('debug--------', h, w)
         return im, gt, h, w, loc_t, conf_t
 
     def __len__(self):
         return len(self.ids)
-    
-    
+
     def pull_item(self, index):
         img_id = self.ids[index]
-        target = ET.parse(self._annopath % img_id).getroot()
+        target = ET.parse(self._annopath % img_id).getroot()    #read xml
         #print (target, '================')
         img = cv2.imread(self._imgpath % img_id)
         height, width, channels = img.shape

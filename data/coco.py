@@ -8,6 +8,8 @@ import torchvision.transforms as transforms
 import cv2
 import numpy as np
 
+import copy
+
 from pycocotools.coco import COCO
 
 COCO_ROOT = osp.join(HOME, 'data/coco/')
@@ -53,7 +55,7 @@ class COCOAnnotationTransform(object):
         self.label_map = get_label_map(osp.join(COCO_ROOT, 'coco_labels.txt'))
         self.is_scale = is_scale
 
-    def __call__(self, target, width, height):
+    def __call__(self, target_, width, height):
         """
         Args:
             target (dict): COCO target json annotation as a python dict
@@ -62,6 +64,7 @@ class COCOAnnotationTransform(object):
         Returns:
             a list containing lists of bounding boxes  [bbox coords, class idx]
         """
+        target = copy.deepcopy(target_)
         scale = np.array([width, height, width, height])
         res = []
         for obj in target:
@@ -71,9 +74,9 @@ class COCOAnnotationTransform(object):
                 bbox[3] += bbox[1]
                 label_idx = self.label_map[obj['category_id']] - 1
                 if self.is_scale:
-                    final_box = list(np.array(bbox)/scale)  #scale to [0, 1]
+                    final_box = list((np.array(bbox).astype(np.int) - 1)/scale)  #scale to [0, 1]
                 else:
-                    final_box = list(np.array(bbox))
+                    final_box = list(np.array(bbox).astype(np.int) - 1)
                 final_box.append(label_idx)
                 res += [final_box]  # [xmin, ymin, xmax, ymax, label_idx]
             else:
@@ -188,10 +191,6 @@ class CocoDataset(Dataset):
                 height=coco.imgs[i]["height"],
                 annotations=coco.loadAnns(coco.getAnnIds(
                     imgIds=[i], catIds=class_ids, iscrowd=None)))
-# dataset_train = CocoDataset()
-# dataset_train.load_coco(args.dataset, "train", year=args.year, auto_download=args.download)
-# dataset_train.load_coco(args.dataset, "valminusminival", year=args.year, auto_download=args.download)
-# dataset_train.prepare()
 
 #return self.image_info[image_id]["path"]
 class COCODetection(data.Dataset):
@@ -211,13 +210,13 @@ class COCODetection(data.Dataset):
         self.root = root
         #osp.join(root, IMAGES, image_set)   #jpeg path
 
-        self.dataset_train = CocoDataset()
+        self.data_set = CocoDataset()
         for subset in image_set:
-            self.dataset_train.load_coco(root, subset)
+            self.data_set.load_coco(root, subset)
 
         # self.coco = COCO(osp.join(root, ANNOTATIONS,
         #                           INSTANCES_SET.format(image_set))) #annotation path
-        self.ids = self.dataset_train._image_ids
+        self.ids = self.data_set._image_ids
         #print('test-----------------------',self.ids[0], self.ids[-1])
 
         self.transform = transform
@@ -247,13 +246,10 @@ class COCODetection(data.Dataset):
                    target is the object returned by ``coco.loadAnns``.
         """
         img_id = self.ids[index]
-        target = self.dataset_train.image_info[img_id]["annotations"]
-        #target = self.coco.imgToAnns[img_id]
-        #ann_ids = self.coco.getAnnIds(imgIds=img_id)
+        target = self.data_set.image_info[img_id]["annotations"]   # is pointer ?????????????????????
+        #print('debug  target', target)
 
-        #target = self.coco.loadAnns(ann_ids)
-        path = self.dataset_train.image_info[img_id]["path"]
-        #osp.join(self.root, self.coco.loadImgs(img_id)[0]['file_name'])
+        path = self.data_set.image_info[img_id]["path"]
         assert osp.exists(path), 'Image path does not exist: {}'.format(path)
         img = cv2.imread(path)  #bgr        Shape(H, W, C)
         height, width, c_ = img.shape
@@ -271,45 +267,3 @@ class COCODetection(data.Dataset):
 
             target = np.hstack((boxes, np.expand_dims(labels, axis=1)))
         return torch.from_numpy(img).permute(2, 0, 1), target, height, width, -1, -1    #c h w
-
-    def pull_image(self, index):
-        '''Returns the original image object at index in PIL form
-
-        Note: not using self.__getitem__(), as any transformations passed in
-        could mess up this functionality.
-
-        Argument:
-            index (int): index of img to show
-        Return:
-            cv2 img
-        '''
-        img_id = self.ids[index]
-        path = self.dataset_train.image_info[img_id]["path"]
-        #self.coco.loadImgs(img_id)[0]['file_name']
-        return cv2.imread(path, cv2.IMREAD_COLOR)
-
-    def pull_anno(self, index):
-        '''Returns the original annotation of image at index
-
-        Note: not using self.__getitem__(), as any transformations passed in
-        could mess up this functionality.
-
-        Argument:
-            index (int): index of img to get annotation of
-        Return:
-            list:  [img_id, [(label, bbox coords),...]]
-                eg: ('001718', [('dog', (96, 13, 438, 332))])
-        '''
-        img_id = self.ids[index]
-        #ann_ids = self.coco.getAnnIds(imgIds=img_id)
-        return self.dataset_train.image_info[img_id]["annotations"] #self.coco.loadAnns(ann_ids)
-
-    def __repr__(self):
-        fmt_str = 'Dataset ' + self.__class__.__name__ + '\n'
-        fmt_str += '    Number of datapoints: {}\n'.format(self.__len__())
-        fmt_str += '    Root Location: {}\n'.format(self.root)
-        tmp = '    Transforms (if any): '
-        fmt_str += '{0}{1}\n'.format(tmp, self.transform.__repr__().replace('\n', '\n' + ' ' * len(tmp)))
-        tmp = '    Target Transforms (if any): '
-        fmt_str += '{0}{1}'.format(tmp, self.target_transform.__repr__().replace('\n', '\n' + ' ' * len(tmp)))
-        return fmt_str

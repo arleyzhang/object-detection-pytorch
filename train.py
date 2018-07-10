@@ -58,17 +58,18 @@ parser.add_argument('--loss_type', default='ssd_loss', type=str,    ########## l
 args = parser.parse_args()
 
 ###################################################  some configs need to update
-snapshot_prefix = 'ssd_voc_evaltmp_'
-args.dataset = 'VOC'
+snapshot_prefix = 'ssd_coco_eval0710_'
+args.dataset = 'COCO'
 
-cfg = ssd_voc_vgg
+cfg = ssd_coco_vgg
 
-test_interval = 20000
+match_priors = False    # True: match in dataloader, False: match in loss
+test_interval = 40000
 snapshot = 5000
 step_index = 0  #need put in args ???#ssd_voc_nocudnn0703_115000
-run_break = 2000
+run_break = -5
 args.lr = 1e-3
-args.num_workers = 48
+args.num_workers = 8
 #args.resume = '../../weights/ssd_coco_eval0707_35000.pth' #tmp2
 
 cudnn_benchmark = False
@@ -92,7 +93,7 @@ if not os.path.exists(args.save_folder):    #snapshot and save_model
 
 
 def train():
-    global step_index, iteration
+    global step_index, iteration, match_priors
 
     if args.dataset == 'COCO':
         if args.dataset_root == VOC_ROOT:
@@ -105,14 +106,15 @@ def train():
                            BaseTransform(300, MEANS),
                            target_transform=COCOAnnotationTransform(False))
     elif args.dataset == 'VOC':
-        priors = None
-
-        priorbox = PriorBox(cfg)
-        priors = priorbox.forward().cpu().numpy()
+        if match_priors:
+            priorbox = PriorBox(cfg)
+            match_priors = priorbox.forward().cpu().numpy()
+        else:
+            match_priors = None
 
         dataset = VOCDetection(args.dataset_root, [('2007', 'trainval'), ('2012', 'trainval')], #('2012', 'trainval')
                                transform=SSDAugmentation(cfg['min_dim'],MEANS),
-                               priors = priors)
+                               priors = match_priors)
         val_dataset = VOCDetection(args.dataset_root, [('2007', 'test')],
                            BaseTransform(300, MEANS),
                            target_transform=VOCAnnotationTransform(False))
@@ -292,7 +294,7 @@ def train():
 
             #save model ssd_net.state_dict()? net.?
             if (iteration % snapshot == 0 and iteration != args.start_iter):
-                print('Saving state, iter:', iteration)
+                print('Saving state, iter:', snapshot_prefix+repr(iteration) + '.pth')
                 save_checkpoint({'iteration': iteration,
                                 'step_index': step_index,
                                 'state_dict': ssd_net.state_dict()},
