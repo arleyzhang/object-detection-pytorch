@@ -213,7 +213,7 @@ class EvalSolver(object):
             detections = self.detector(loc, conf, self.priors)  #run on a gpu
             detections = detections.data    #Shape(8,21,200,5)
             #timers['detect_time'].toc()
-
+            
             #print('debug detections----', detections.size(), images.size())
             #print("debug p d time1: %.4f %.4f" % (timers['pred_time'].diff, timers['detect_time'].diff))
 
@@ -235,7 +235,7 @@ class EvalSolver(object):
                     cls_dets = np.hstack((boxes.cpu().numpy(),
                                         scores[:, np.newaxis])).astype(np.float32,
                                                                         copy=False)
-                    all_boxes[cls_idx][img_idx] = cls_dets
+                    all_boxes[cls_idx][img_idx] = cls_dets  #is ok
                 #record gt box
                 if not self.is_readed:
                     self.gt_recs[img_idx] = parse_rec(targets[batch_idx])
@@ -257,7 +257,7 @@ class EvalSolver(object):
                 npos = npos + sum(~difficult)   #only think difficult=0
                 gt_class_recs[imagename] = {'bbox': bbox,
                                         'difficult': difficult,
-                                        'det': det}    #
+                                        'det': det}
             rec, prec, ap = voc_eval(gt_class_recs, all_boxes[cls_idx], npos)
             aps += [ap]
             #print('eval class {}: {}'.format(cls_idx - 1, ap))

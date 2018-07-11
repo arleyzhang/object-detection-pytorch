@@ -40,7 +40,7 @@ parser = argparse.ArgumentParser(
     description='Single Shot MultiBox Detector Evaluation')
 parser.add_argument('--trained_model',default=None, type=str,
                     help='Trained state_dict file path to open')
-parser.add_argument('--save_folder', default='eval/', type=str,
+parser.add_argument('--save_folder', default='../../weights/', type=str,
                     help='File path to save results')
 parser.add_argument('--confidence_threshold', default=0.01, type=float,
                     help='Detection confidence threshold')
@@ -58,8 +58,8 @@ args = parser.parse_args()
 ###########################################
 # test with trained_model
 if args.trained_model is None:
-    args.trained_model = '../../weights/ssd_coco_eval0710_10000.pth'
-    
+    args.trained_model = '../../weights/ssd_coco_eval0710_160000.pth'
+
 
 #Annotations for crownd #Annotations_src for normal voc
 
@@ -67,14 +67,14 @@ devkit_path = args.voc_root
 dataset_mean = (104, 117, 123)
 set_type = 'minival' #test_full   #test_crowd
 
-CUDA_VISIBLE_DEVICES="2"        #####################Specified GPUs range
+CUDA_VISIBLE_DEVICES="1"        #####################Specified GPUs range
 os.environ["CUDA_VISIBLE_DEVICES"] = CUDA_VISIBLE_DEVICES
 
 print ('data_path:', devkit_path, 'test_type:', set_type, 'test_model:', args.trained_model,\
         'device_id:', CUDA_VISIBLE_DEVICES)
 
 if not os.path.exists(args.save_folder):
-    os.mkdir(args.save_folder)
+    print(args.save_folder, "not exsit!!!")
 
 if torch.cuda.is_available():
     if args.cuda:
@@ -87,19 +87,18 @@ else:
     torch.set_default_tensor_type('torch.FloatTensor')
 
 
-def parse_rec(target_, label_map):
+def parse_rec(target, label_map):
     """ Parse a COCO target """
-    target = copy.deepcopy(target_)
+    #target = copy.deepcopy(target_)
     objects = []
     for obj in target:
         if 'bbox' in obj:
             rec = {}
-            bbox = obj['bbox']
-            bbox[2] += bbox[0]
-            bbox[3] += bbox[1]
+            bbox_ = obj['bbox']
             rec['name'] =  labelmap[label_map[obj['category_id']] - 1]
             rec['difficult'] = 0
-            rec['bbox'] = [int(bbox[0]) - 1, int(bbox[1]) - 1, int(bbox[2]) - 1, int(bbox[3]) - 1]
+            rec['bbox'] = [int(bbox_[0]) - 1, int(bbox_[1]) - 1, 
+                            int(bbox_[2] + bbox_[0]) - 1, int(bbox_[3] + bbox_[1]) - 1]
             objects.append(rec)
     return objects
 
@@ -239,8 +238,7 @@ def voc_eval(detpath, label_file, dataset,classname, cachedir,
         for i, index in enumerate(dataset.ids):
             imagename = str(dataset.data_set.image_info[index]["id"])
             target = dataset.data_set.image_info[index]["annotations"]
-
-            recs[imagename] = parse_rec(target, label_map)
+            recs[imagename] = parse_rec(target, label_map)  #is ok
             if i % 100 == 0:
                 print('Reading annotation for {:d}/{:d}'.format(
                    i + 1, len(dataset.ids)))
@@ -262,7 +260,7 @@ def voc_eval(detpath, label_file, dataset,classname, cachedir,
         npos = npos + sum(~difficult)   #only think difficult=0
         class_recs[imagename] = {'bbox': bbox,
                                  'difficult': difficult,
-                                 'det': det}    #
+                                 'det': det}
 
     # read dets with this class
     detfile = detpath.format(classname)
@@ -332,9 +330,6 @@ def voc_eval(detpath, label_file, dataset,classname, cachedir,
 
     return rec, prec, ap
 
-# test_net(args.save_folder, net, args.cuda, dataset,
-#              BaseTransform(net.size, dataset_mean), args.top_k, 300,
-#              thresh=args.confidence_threshold)
 def test_net(save_folder, net, cuda, dataset, transform, top_k,
              im_size=300, thresh=0.05):
     num_images = len(dataset)
@@ -346,7 +341,7 @@ def test_net(save_folder, net, cuda, dataset, transform, top_k,
 
     # timers
     _t = {'im_detect': Timer(), 'misc': Timer()}
-    output_dir = get_output_dir('coco300_35k', set_type)  #set_type = 'test'
+    output_dir = get_output_dir('{}/coco300_35k'.format(save_folder), set_type)  #set_type = 'test'
     det_file = os.path.join(output_dir, 'detections.pkl')
 
     for i in range(num_images):
@@ -393,7 +388,6 @@ def evaluate_detections(box_list, output_dir, dataset):
 
 if __name__ == '__main__':
     # load net
-    num_classes = len(labelmap) + 1                      # +1 for background
     net = creat_model(phase='test', cfg=ssd_coco_vgg)            # initialize SSD
     net.load_state_dict(torch.load(args.trained_model)['state_dict'])   #model is dict{}
     net.eval()
@@ -404,7 +398,7 @@ if __name__ == '__main__':
                                 COCOAnnotationTransform(False))
     if args.cuda:
         net = net.cuda()
-        cudnn.benchmark = True
+        cudnn.benchmark = False
     # evaluation
     test_net(args.save_folder, net, args.cuda, dataset,
              BaseTransform(net.size, dataset_mean), args.top_k, 300,

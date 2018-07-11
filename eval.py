@@ -38,7 +38,7 @@ parser = argparse.ArgumentParser(
     description='Single Shot MultiBox Detector Evaluation')
 parser.add_argument('--trained_model',default=None, type=str,
                     help='Trained state_dict file path to open')
-parser.add_argument('--save_folder', default='eval/', type=str,
+parser.add_argument('--save_folder', default='../../weights/', type=str,
                     help='File path to save results')
 parser.add_argument('--confidence_threshold', default=0.01, type=float,
                     help='Detection confidence threshold')
@@ -75,7 +75,7 @@ print ('data_path:', devkit_path, 'test_type:', set_type, 'test_model:', args.tr
         'device_id:', CUDA_VISIBLE_DEVICES)
 
 if not os.path.exists(args.save_folder):
-    os.mkdir(args.save_folder)
+    print(args.save_folder, "not exsit!!!")
 
 if torch.cuda.is_available():
     if args.cuda:
@@ -211,19 +211,10 @@ def voc_ap(rec, prec, use_07_metric=True):  ###???
     return ap
 
 
-def voc_eval(detpath,
-             annopath,
-             imagesetfile,
-             classname,
-             cachedir,
-             ovthresh=0.5,
+def voc_eval(detpath, annopath, imagesetfile,
+             classname, cachedir, ovthresh=0.5,
              use_07_metric=True):
-    """rec, prec, ap = voc_eval(detpath,
-                           annopath,
-                           imagesetfile,
-                           classname,
-                           [ovthresh],
-                           [use_07_metric])
+    """
 Top level function that does the PASCAL VOC evaluation.
 detpath: Path to detections
    detpath.format(classname) should produce the detection results file.
@@ -369,7 +360,7 @@ def test_net(save_folder, net, cuda, dataset, transform, top_k,
 
     # timers
     _t = {'im_detect': Timer(), 'misc': Timer()}
-    output_dir = get_output_dir('ssd300_120000', set_type)  #set_type = 'test'
+    output_dir = get_output_dir('{}/voc300_120000'.format(save_folder), set_type)  #set_type = 'test'
     det_file = os.path.join(output_dir, 'detections.pkl')
 
     for i in range(num_images):
@@ -417,7 +408,6 @@ def evaluate_detections(box_list, output_dir, dataset):
 
 if __name__ == '__main__':
     # load net
-    num_classes = len(labelmap) + 1                      # +1 for background
     net = creat_model(phase='test', cfg=cfg)            # initialize SSD
     net.load_state_dict(torch.load(args.trained_model)['state_dict'])   #model is dict{}
     net.eval()

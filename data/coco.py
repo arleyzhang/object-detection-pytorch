@@ -55,7 +55,7 @@ class COCOAnnotationTransform(object):
         self.label_map = get_label_map(osp.join(COCO_ROOT, 'coco_labels.txt'))
         self.is_scale = is_scale
 
-    def __call__(self, target_, width, height):
+    def __call__(self, target, width, height):
         """
         Args:
             target (dict): COCO target json annotation as a python dict
@@ -64,19 +64,19 @@ class COCOAnnotationTransform(object):
         Returns:
             a list containing lists of bounding boxes  [bbox coords, class idx]
         """
-        target = copy.deepcopy(target_)
         scale = np.array([width, height, width, height])
         res = []
         for obj in target:
             if 'bbox' in obj:
-                bbox = obj['bbox']
-                bbox[2] += bbox[0]
-                bbox[3] += bbox[1]
+                bbox_ = obj['bbox']
+                bbox = [int(bbox_[0]) - 1, int(bbox_[1]) - 1, 
+                        int(bbox_[2] + bbox_[0]) - 1, int(bbox_[3] + bbox_[1]) - 1]
+                
                 label_idx = self.label_map[obj['category_id']] - 1
                 if self.is_scale:
-                    final_box = list((np.array(bbox).astype(np.int) - 1)/scale)  #scale to [0, 1]
+                    final_box = list(np.array(bbox) / scale)  #scale to [0, 1]
                 else:
-                    final_box = list(np.array(bbox).astype(np.int) - 1)
+                    final_box = list(np.array(bbox))
                 final_box.append(label_idx)
                 res += [final_box]  # [xmin, ymin, xmax, ymax, label_idx]
             else:
@@ -125,13 +125,6 @@ class Dataset(object):
             "name": class_name,
         })
 
-    #  self.add_image(
-    #             "coco", image_id=i,
-    #             path=os.path.join(image_dir, coco.imgs[i]['file_name']),
-    #             width=coco.imgs[i]["width"],
-    #             height=coco.imgs[i]["height"],
-    #             annotations=coco.loadAnns(coco.getAnnIds(
-    #                 imgIds=[i], catIds=class_ids, iscrowd=None)))
     def add_image(self, source, image_id, path, **kwargs):
         image_info = {
             "id": image_id, #img id
@@ -248,10 +241,9 @@ class COCODetection(data.Dataset):
         img_id = self.ids[index]
         target = self.data_set.image_info[img_id]["annotations"]   # is pointer ?????????????????????
         #print('debug  target', target)
-
         path = self.data_set.image_info[img_id]["path"]
         assert osp.exists(path), 'Image path does not exist: {}'.format(path)
-        img = cv2.imread(path)  #bgr        Shape(H, W, C)
+        img = cv2.imread(path)  #        Shape(H, W, C)
         height, width, c_ = img.shape
         if self.target_transform is not None:   #process to [xmin,ymin,xmax,ymax, label]
             target = self.target_transform(target, width, height)
