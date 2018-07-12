@@ -96,7 +96,7 @@ def match_ssd(threshold, truths, priors, variances, labels, loc_t, conf_t, idx):
     # jaccard index
     overlaps = jaccard(
         truths,
-        point_form(priors)
+        point_form(priors)  #[xmin, ymin, ..., ymax]
     )
     # (Bipartite Matching)
     # [1,num_objects] best prior for each ground truth
@@ -157,7 +157,7 @@ def match(threshold, predicts, truths, priors, variances, labels, loc_t, loc_g, 
     best_truth_overlap.index_fill_(0, best_prior_idx, 2)  # ensure best prior # for gt
     # TODO refactor: index  best_prior_idx with long tensor
     # ensure every gt matches with its prior of max overlap
-    for j in range(best_prior_idx.size(0)): #num_objects
+    for j in range(best_prior_idx.size(0)): #num_objects    #cuda
         best_truth_idx[best_prior_idx[j]] = j
     
     matches = truths[best_truth_idx]   #[maxx, maxy, minx, miny] shape:[num_priors, 4]

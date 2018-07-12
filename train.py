@@ -58,24 +58,24 @@ parser.add_argument('--loss_type', default='ssd_loss', type=str,    ########## l
 args = parser.parse_args()
 
 ###################################################  some configs need to update
-snapshot_prefix = 'ssd_coco_eval0710_'
-args.dataset = 'COCO'
+snapshot_prefix = 'ssd_voc_eval0712_'
+args.dataset = 'VOC'
 
-cfg = ssd_coco_vgg
+cfg = ssd_voc_vgg
 
 match_priors = False    # True: match in dataloader, False: match in loss
-test_interval = 40000
+test_interval = 4
 snapshot = 5000
 step_index = 0  #need put in args ???#ssd_voc_nocudnn0703_115000
 run_break = -5
 args.lr = 1e-3
 args.num_workers = 8
-#args.resume = '../../weights/ssd_coco_eval0707_35000.pth' #tmp2
+#args.resume = '../../weights/ssd_coco_eval0710_275000.pth' #tmp2
 
 cudnn_benchmark = False
 torch.backends.cudnn.enabled = True   #cudnn switch
 
-CUDA_VISIBLE_DEVICES="5,4,6,7"  #Specified GPUs range
+CUDA_VISIBLE_DEVICES="2,0,1,3"  #Specified GPUs range
 os.environ["CUDA_VISIBLE_DEVICES"] = CUDA_VISIBLE_DEVICES
 
 if torch.cuda.is_available():
@@ -95,6 +95,14 @@ if not os.path.exists(args.save_folder):    #snapshot and save_model
 def train():
     global step_index, iteration, match_priors
 
+    #init priors
+    ssd_net, layer_dimensions = creat_model('train', cfg)
+    priorbox = PriorBox(cfg)
+    priors = priorbox.forward(layer_dimensions) #<class 'torch.cuda.FloatTensor'>  
+    #print('debug', priors.size(), type(priors))
+    ssd_net.priors = Variable(priors, volatile=True)
+    #assert 1==0
+
     if args.dataset == 'COCO':
         if args.dataset_root == VOC_ROOT:
              args.dataset_root = COCO_ROOT
@@ -107,23 +115,17 @@ def train():
                            target_transform=COCOAnnotationTransform(False))
     elif args.dataset == 'VOC':
         if match_priors:
-            priorbox = PriorBox(cfg)
-            match_priors = priorbox.forward().cpu().numpy()
+            match_priors = priors.cpu().numpy()
         else:
             match_priors = None
 
-        dataset = VOCDetection(args.dataset_root, [('2007', 'trainval'), ('2012', 'trainval')], #('2012', 'trainval')
+        dataset = VOCDetection(args.dataset_root, [('2007', 'trainval_small')], #('2012', 'trainval')
                                transform=SSDAugmentation(cfg['min_dim'],MEANS),
                                priors = match_priors)
-        val_dataset = VOCDetection(args.dataset_root, [('2007', 'test')],
+        val_dataset = VOCDetection(args.dataset_root, [('2007', 'test_small')],
                            BaseTransform(300, MEANS),
                            target_transform=VOCAnnotationTransform(False))
-
-    if args.visdom:
-        import visdom
-        viz = visdom.Visdom()
-
-    ssd_net = creat_model('train', cfg)
+    #net
     net = ssd_net
     if args.cuda:
         net = torch.nn.DataParallel(ssd_net)    #device_ids=[0,1,2,3]
@@ -136,20 +138,20 @@ def train():
         args.start_iter = checkpoint['iteration']
         step_index = checkpoint['step_index']
         ssd_net.load_state_dict(checkpoint['state_dict'])
-        
-        #load_filtered_state_dict(ssd_net, torch.load(args.resume))
     else:
-        # init_model_file = init_new_model(args.save_folder, args.basenet)
-        # ssd_net.load_state_dict(torch.load(init_model_file))
         vgg_weights = torch.load(args.save_folder + args.basenet)
         print('Loading base network...')
         ssd_net.vgg.load_state_dict(vgg_weights)   #########################later vgg >> base
-
+        
         print('Initializing extra weights...')
         # initialize newly added layers' weights with xavier method
         ssd_net.extras.apply(weights_init)
         ssd_net.loc.apply(weights_init)
         ssd_net.conf.apply(weights_init)
+
+        if cfg['ssds_type'] == 'fssd':
+            ssd_net.transforms.apply(weights_init)
+            ssd_net.pyramids.apply(weights_init)
     
     if args.cuda:
         net = net.cuda()
@@ -178,6 +180,9 @@ def train():
     print('Using the specified args:')
     print(args, 'Gpus: ' + CUDA_VISIBLE_DEVICES)
 
+    if args.visdom:
+        import visdom
+        viz = visdom.Visdom()
 
     if args.visdom:
         vis_title = 'SSD.PyTorch on ' + dataset.name
@@ -196,7 +201,8 @@ def train():
                                   shuffle=False, collate_fn=detection_collate,
                                   pin_memory=True)
     #add eval_solver#######################################################
-    eval_solver = EvalSolver(val_loader, len(val_dataset), args.save_folder, cfg)
+    eval_solver = EvalSolver(val_loader, Variable(priors, volatile=True), 
+                                        len(val_dataset), args.save_folder, cfg)
 
     # create batch iterator
     #batch_iterator = iter(data_loader)

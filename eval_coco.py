@@ -16,6 +16,7 @@ from data import COCO_CLASSES as labelmap
 from data.config import *
 from models.model_build import creat_model
 from utils import *
+from layers import *
 
 import sys
 import os
@@ -58,8 +59,8 @@ args = parser.parse_args()
 ###########################################
 # test with trained_model
 if args.trained_model is None:
-    args.trained_model = '../../weights/ssd_coco_eval0710_160000.pth'
-
+    args.trained_model = '../../weights/ssd_coco_eval0710_275000.pth'
+cfg=ssd_coco_vgg
 
 #Annotations for crownd #Annotations_src for normal voc
 
@@ -67,7 +68,7 @@ devkit_path = args.voc_root
 dataset_mean = (104, 117, 123)
 set_type = 'minival' #test_full   #test_crowd
 
-CUDA_VISIBLE_DEVICES="1"        #####################Specified GPUs range
+CUDA_VISIBLE_DEVICES="6"        #####################Specified GPUs range
 os.environ["CUDA_VISIBLE_DEVICES"] = CUDA_VISIBLE_DEVICES
 
 print ('data_path:', devkit_path, 'test_type:', set_type, 'test_model:', args.trained_model,\
@@ -369,7 +370,7 @@ def test_net(save_folder, net, cuda, dataset, transform, top_k,
             scores = dets[:, 0].cpu().numpy()
             cls_dets = np.hstack((boxes.cpu().numpy(),
                                   scores[:, np.newaxis])).astype(np.float32,
-                                                                 copy=False)
+                                                              copy=False)
             all_boxes[j][i] = cls_dets
 
         print('im_detect: {:d}/{:d} {:.3f}s'.format(i + 1,
@@ -388,7 +389,11 @@ def evaluate_detections(box_list, output_dir, dataset):
 
 if __name__ == '__main__':
     # load net
-    net = creat_model(phase='test', cfg=ssd_coco_vgg)            # initialize SSD
+    net, layer_dimensions = creat_model(phase='test', cfg=cfg, input_h = 300, input_w = 300)
+    priorbox = PriorBox(cfg)
+    priors = priorbox.forward(layer_dimensions) #<class 'torch.FloatTensor'>???????
+
+    net.priors = Variable(priors, volatile=True)
     net.load_state_dict(torch.load(args.trained_model)['state_dict'])   #model is dict{}
     net.eval()
     print('Finished loading model!')

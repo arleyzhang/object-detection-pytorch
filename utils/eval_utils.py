@@ -150,15 +150,14 @@ def parse_rec(targets): #all objs in a img
     return objects
 
 class EvalSolver(object):
-    def __init__(self, data_loader, test_size,cachedir, cfg):
+    def __init__(self, data_loader, priors, test_size, cachedir, cfg):
         self.detector = Detect(cfg['num_classes'], 0, 200, 0.01, 0.45)
         self.data_loader = data_loader
         self.test_size = test_size
         self.cfg = cfg
 
-        self.priorbox = PriorBox(self.cfg)
-        self.priors = Variable(self.priorbox.forward(), volatile=True)
-        self.num_priors = self.priors.size(0)
+        self.priors = priors
+        #self.num_priors = self.priors.size(0)
 
         self.cachefile = os.path.join(cachedir, '{}_annots.pkl'.format(cfg['dataset_name']))
         self.gt_recs, is_readed = self.read_cachefile(cachedir, self.cachefile)
@@ -180,9 +179,6 @@ class EvalSolver(object):
 
         all_boxes = [[[] for _ in range(self.test_size)]
                  for _ in range(self.cfg['num_classes'])]
-
-        conf_t = ()#torch.FloatTensor(self.test_size, self.num_priors, self.cfg['num_classes'])
-        loc_t = ()#torch.FloatTensor(self.test_size, self.num_priors, 4)
 
         #print('all_boxes----', len(self.data_loader)) #10????
         img_idx = 0

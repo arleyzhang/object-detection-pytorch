@@ -19,8 +19,9 @@ ssd_voc_vgg = {
     'num_classes': 21,
     'lr_steps': (80000, 100000, 120000),
     'max_iter': 120000,#120000,
-    'feature_maps': [38, 19, 10, 5, 3, 1],
-    'min_dim': 300,
+    #'mbox_source_layers': [21, 33, 36, 38, 40, 42],
+    'image_size': [300, 300],  #[H, W]
+    'min_dim': 300, #resize
     'steps': [8, 16, 32, 64, 100, 300],
     'min_sizes': [30, 60, 111, 162, 213, 264],
     'max_sizes': [60, 111, 162, 213, 264, 315],
@@ -36,7 +37,8 @@ ssd_coco_vgg = {
     'num_classes': 81,  #201????
     'lr_steps': (280000, 360000, 400000),
     'max_iter': 400000,
-    'feature_maps': [38, 19, 10, 5, 3, 1],
+    #'mbox_source_layers': [21, 33, 36, 38, 40, 42], #conv4_3
+    'image_size': [300, 300],  #[H, W]
     'min_dim': 300,
     'steps': [8, 16, 32, 64, 100, 300],
     'min_sizes': [21, 45, 99, 153, 207, 261],
@@ -60,7 +62,7 @@ fssd_voc_vgg = {
     'steps': [8, 16, 32, 64, 100, 300],
     'min_sizes': [30, 60, 111, 162, 213, 264],
     'max_sizes': [60, 111, 162, 213, 264, 315],
-    'aspect_ratios': [[2, 3], [2, 3], [2, 3], [2, 3], [2], [2]],    #6 6 6 6 4 4
+    'aspect_ratios': [[2], [2, 3], [2, 3], [2, 3], [2], [2]],    #6 6 6 6 4 4
     'variance': [0.1, 0.2],
     'clip': True,
     'dataset_name': 'VOC',

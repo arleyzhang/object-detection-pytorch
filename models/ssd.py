@@ -32,13 +32,14 @@ class SSD(nn.Module):
         self.phase = phase
         self.num_classes = cfg['num_classes']
         self.cfg = cfg
-        self.priorbox = PriorBox(self.cfg)
-        self.priors = Variable(self.priorbox.forward(), volatile=True)
         self.size = size
+
+        #self.layers_dimension = get_layers_dimension()
+        #self.priorbox = PriorBox(self.cfg)
+        self.priors = None#Variable(self.priorbox.forward(), volatile=True)
 
         # SSD network
         self.vgg = nn.ModuleList(base)  #is need to update base
-        #self.base = self.vgg
         # Layer learns to scale the l2 normalized features from conv4_3
         self.L2Norm = L2Norm(512, 20)
         self.extras = nn.ModuleList(extras)
@@ -101,6 +102,9 @@ class SSD(nn.Module):
         if self.phase == "test":
             #timer = Timer()
             #timer.tic()
+            if self.priors is None:
+                print('Test net init success!')
+                return 0
             output = self.detect(
                 loc.view(loc.size(0), -1, 4),                   # loc preds
                 self.softmax(conf.view(conf.size(0), -1,
@@ -159,11 +163,11 @@ def multibox(base, extra_layers, cfg, num_classes):
     return base, extra_layers, (loc_layers, conf_layers)
 
 
-base = {
-    '300': [64, 64, 'M', 128, 128, 'M', 256, 256, 256, 'C', 512, 512, 512, 'M',
-            512, 512, 512],
-    '512': [],
-}
+# base = {
+#     '300': [64, 64, 'M', 128, 128, 'M', 256, 256, 256, 'C', 512, 512, 512, 'M',
+#             512, 512, 512],
+#     '512': [],
+# }
 extras = {
     '300': [256, 'S', 512, 128, 'S', 256, 128, 256, 128, 256],
     '512': [],
@@ -183,7 +187,8 @@ def build_ssd(phase, cfg, base):
         print("ERROR: You specified size " + repr(size) + ". However, " +
               "currently only SSD300 (size=300) is supported!")
         return
-    base_, extras_, head_ = multibox(base(),
+    base_ = base()
+    base_, extras_, head_ = multibox(base_,
                                      add_extras(extras[str(size)], 1024),
                                      mbox[str(size)], num_classes)
     return SSD(phase, size, base_, extras_, head_, cfg)

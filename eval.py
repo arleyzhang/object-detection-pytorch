@@ -16,6 +16,7 @@ from data import VOC_CLASSES as labelmap
 from data.config import *
 from models.model_build import creat_model
 from utils import *
+from layers import *
 
 import sys
 import os
@@ -346,9 +347,6 @@ cachedir: Directory for caching the annotations
 
     return rec, prec, ap
 
-# test_net(args.save_folder, net, args.cuda, dataset,
-#              BaseTransform(net.size, dataset_mean), args.top_k, 300,
-#              thresh=args.confidence_threshold)
 def test_net(save_folder, net, cuda, dataset, transform, top_k,
              im_size=300, thresh=0.05):
     num_images = len(dataset)
@@ -408,7 +406,11 @@ def evaluate_detections(box_list, output_dir, dataset):
 
 if __name__ == '__main__':
     # load net
-    net = creat_model(phase='test', cfg=cfg)            # initialize SSD
+    net, layer_dimensions = creat_model(phase='test', cfg=cfg, input_h = 300, input_w = 300)
+    priorbox = PriorBox(cfg)
+    priors = priorbox.forward(layer_dimensions) #<class 'torch.FloatTensor'>???????
+
+    net.priors = Variable(priors, volatile=True)
     net.load_state_dict(torch.load(args.trained_model)['state_dict'])   #model is dict{}
     net.eval()
     print('Finished loading model!')

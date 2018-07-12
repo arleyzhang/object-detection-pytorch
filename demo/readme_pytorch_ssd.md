@@ -5,7 +5,7 @@
     conda create --name your_env_name python=3.5
 1.2 conda环境变量下，安装torch和torchvision，安装指定版本（0.3.1）：
     配置opencv: conda install -c https://conda.anaconda.org/menpo opencv3 (能确保安装对应版本的mkl库)
-    (pip用清华源快点, torch=0.3.1, torchvision=0.2.1)
+    (pip用清华源,速度快, torch=0.3.1, torchvision=0.2.1)
 
 2 初始代码： https://github.com/amdegroot/ssd.pytorch
 

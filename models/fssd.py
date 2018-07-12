@@ -16,25 +16,19 @@ class FSSD(nn.Module):
         self.phase = phase
         self.num_classes = cfg['num_classes']
         self.cfg = cfg
-        self.priorbox = PriorBox(self.cfg)
-        self.priors = Variable(self.priorbox.forward(), volatile=True)
+        
+        self.priors = None
         self.size = cfg['min_dim']
 
         # SSD network
         self.vgg = nn.ModuleList(base)
         # Layer learns to scale the l2 normalized features from conv4_3
-        self.L2Norm = L2Norm(512, 20)   #is not used 
-        self.extras = nn.ModuleList(extras)
+        self.L2Norm = L2Norm(512, 20)   #is not used
 
+        self.extras = nn.ModuleList(extras)
         self.loc = nn.ModuleList(head[0])
         self.conf = nn.ModuleList(head[1])
-
-        if self.phase == 'test':
-            self.softmax = nn.Softmax(dim=-1)
-            self.detect = Detect(self.num_classes, 0, 200, 0.01, 0.45)
         
-      
-    
         self.feature_layer = feature_layer[0][0]
         self.transforms = nn.ModuleList(features[0])
         self.pyramids = nn.ModuleList(features[1])
@@ -42,8 +36,9 @@ class FSSD(nn.Module):
         # Layer learns to scale the l2 normalized features from conv4_3
         # Concat >>> batchnorm
         self.norm = nn.BatchNorm2d(int(feature_layer[0][1][-1]/2)*len(self.transforms),affine=True)
-
         self.softmax = nn.Softmax(dim=-1)
+        if self.phase == 'test':
+            self.detect = Detect(self.num_classes, 0, 200, 0.01, 0.45)
 
     def forward(self, x, phase='train'):
         sources, transformed, pyramids, loc, conf = [list() for _ in range(5)]
@@ -51,7 +46,7 @@ class FSSD(nn.Module):
         # apply bases layers and cache source layer outputs
         for k in range(len(self.vgg)):
             x = self.vgg[k](x)
-            if k in self.feature_layer: #[22, 34, 'S']  is get output of relu
+            if k in self.feature_layer: #[22, 34, 'S']  is get output of relu error
                 sources.append(x)   #keep output of layer22 and layer34 
 
         # apply extra layers and cache source layer outputs
@@ -80,6 +75,9 @@ class FSSD(nn.Module):
         conf = torch.cat([o.view(o.size(0), -1) for o in conf], 1)
 
         if self.phase == "test":
+            if self.priors is None:
+                print('Test net init success!')
+                return 0
             output = self.detect(
                 loc.view(loc.size(0), -1, 4),                   # loc preds
                 self.softmax(conf.view(conf.size(0), -1,
@@ -165,7 +163,7 @@ def add_extras(base, feature_layer, mbox, num_classes, version='fssd'):
                         nn.Conv2d(in_channels, int(depth/2), kernel_size=1),
                         nn.Conv2d(int(depth/2), depth, kernel_size=3, stride=2, padding=1)  ]
                 in_channels = depth
-            elif layer == '':
+            elif layer == '':   #if feature map dimension is 5 or 3
                 extra_layers += [
                         nn.Conv2d(in_channels, int(depth/2), kernel_size=1),
                         nn.Conv2d(int(depth/2), depth, kernel_size=3)  ]
@@ -178,12 +176,12 @@ def add_extras(base, feature_layer, mbox, num_classes, version='fssd'):
     '''
     feature_layer[1]:[['', 'S', 'S', 'S', '', ''], [512, 512, 256, 256, 256, 256]]
     '''
-    #in_channels = 3*512
+    #in_channels = 3*256
     for layer, depth, box in zip(feature_layer[1][0], feature_layer[1][1], mbox):
-        if layer == 'S':    #pre_layer dimension mod 2 = 0
+        if layer == 'S':    #
             pyramid_feature_layers += [BasicConv(in_channels, depth, kernel_size=3, stride=2, padding=1)]
             in_channels = depth
-        elif layer == '':   #pre_layer dimension mod 2 != 0
+        elif layer == '':   #keep same | dimension is 5 or 3
             pad = (0,1)[len(pyramid_feature_layers)==0]
             pyramid_feature_layers += [BasicConv(in_channels, depth, kernel_size=3, stride=1, padding=pad)]
             in_channels = depth
@@ -194,16 +192,17 @@ def add_extras(base, feature_layer, mbox, num_classes, version='fssd'):
     return base, extra_layers, (feature_transform_layers, pyramid_feature_layers), (loc_layers, conf_layers)
 
 
+"""
+[0]: add 'S' or '' can add extra layer
+[1]: 'S' denote stride = 2
 
+[14, 21, 33, 'S'], [256, 512, 1024, 512]  conv3-conv7
+"""
 extras = {
-    '300': [[[21, 33, 'S'], [512, 1024, 512]],
-            [['', 'S', 'S', 'S', '', ''], [512, 512, 256, 256, 256, 256]]],
+    '300': [[[14, 21, 33, 'S'], [256, 512, 1024, 512]],  #concat layer
+            [['', 'S', 'S', 'S', '', ''], [512, 512, 256, 256, 256, 256]]], #pyramid_feature_layers
     '512': [],
 }
-# mbox = {
-#     '300': [4, 6, 6, 6, 4, 4],  # number of boxes per feature map location
-#     '512': [],
-# }
 
 
 def build_fssd(phase, cfg, base):
@@ -218,8 +217,9 @@ def build_fssd(phase, cfg, base):
     #[[2], [2, 3], [2, 3], [2, 3], [2], [2]]
     number_box= [2*(len(aspect_ratios) + 1) if isinstance(aspect_ratios[0], int) 
                 else (len(aspect_ratios) + 1) for aspect_ratios in cfg['aspect_ratios']]  
-    # print ('debug',base())
-    base_, extras_, features_, head_ = add_extras(base(),
+    
+    base_ = base()
+    base_, extras_, features_, head_ = add_extras(base_,
                                     extras[str(size)],
                                     number_box, num_classes)
     # print ('debug',base_)
