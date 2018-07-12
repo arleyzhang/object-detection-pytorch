@@ -40,3 +40,8 @@
 6.1 pip install "git+https://github.com/philferriere/cocoapi.git#egg=pycocotools&subdirectory=PythonAPI"
     6.1.1 pre-install: cython
 
+7 tensorboard 
+pip install tensorboardX
+pip install tensorflow (只安装cpu版本就可以)
+python train.py --tensorboard true （默认log_dir='./experiments/models/ssd_voc'）
+tensorboard --logdir ./experiments/models/ssd_voc （ip:6006 可以查看可视化结果）
