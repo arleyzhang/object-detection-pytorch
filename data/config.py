@@ -25,6 +25,7 @@ voc = {
     'clip': True,
     'flip': True,
     'name': 'VOC',
+    'TEST_SETS':  [('2007', 'test_full')],
 }
 
 coco = {

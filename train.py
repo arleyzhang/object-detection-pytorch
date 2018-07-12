@@ -14,6 +14,10 @@ import torch.nn.init as init
 import torch.utils.data as data
 import numpy as np
 import argparse
+from tensorboardX import SummaryWriter
+from utils.visualize_utils import *
+from layers import *
+import random
 
 def str2bool(v):
     return v.lower() in ("yes", "true", "t", "1")
@@ -48,10 +52,14 @@ parser.add_argument('--gamma', default=0.1, type=float,
                     help='Gamma update for SGD')
 parser.add_argument('--visdom', default=False, type=str2bool,
                     help='Use visdom for loss visualization')
+parser.add_argument('--tensorboard', default=False, type=str2bool,
+                    help='Use tensorboard')
 parser.add_argument('--save_folder', default='weights/',  ################ snapshot or pretrained
                     help='Directory for saving checkpoint models')
 parser.add_argument('--loss_type', default='ssd_loss', type=str,    ########## loss type
                     help='ssd_loss or repul_loss')
+parser.add_argument('--log_dir', default='./experiments/models/ssd_voc', type=str,  
+                    help='tensorboard log_dir')
 args = parser.parse_args()
 
 ###################################################  some configs need to update
@@ -102,6 +110,18 @@ def train():
     if args.visdom:
         import visdom
         viz = visdom.Visdom()
+
+    dataset_map = {
+        'VOC': VOCDetection,
+        # 'COCO': COCODetection,
+    }
+
+    if args.tensorboard:
+        writer = SummaryWriter(log_dir=args.log_dir)
+        dataset_vis = dataset_map[cfg['name']](args.dataset_root, cfg['TEST_SETS'], transform=SSDAugmentation(cfg['min_dim'], MEANS))
+        visualize_loader = data.DataLoader(dataset_vis, args.batch_size, num_workers=args.num_workers,
+                                        shuffle=False, collate_fn=detection_collate, pin_memory=True)
+        priorbox = PriorBox(cfg)
 
     ssd_net = build_ssd('train', cfg)
     net = ssd_net
@@ -180,6 +200,16 @@ def train():
             conf_loss = 0
             repul_loss = 0
             epoch += 1
+
+        # tensorboard vis every epoch
+        if args.tensorboard and not args.visdom and (iteration % epoch_size == 0):
+            visualize_epoch(net, visualize_loader, priorbox, writer, epoch)
+            # reset epoch loss counters
+            epoch += 1
+
+        # tensorboard vis every iteration
+        # if args.tensorboard and not args.visdom:
+        #     visualize_epoch(net, visualize_loader, priorbox, writer, iteration)
 
         if iteration in cfg['lr_steps']:
             step_index += 1
@@ -309,6 +339,41 @@ def update_vis_plot(iteration, loc, conf, window1, window2, update_type,
             update=True
         )
 
+def visualize_epoch(model, data_loader, priorbox, writer, epoch):
+    model.eval()
+
+    img_index = random.randint(0, len(data_loader.dataset)-1)
+
+    # get img
+    # image = data_loader.dataset.pull_image(img_index)
+    # img_id, anno = data_loader.dataset.pull_anno(img_index)
+
+    image, boxes, labels = data_loader.dataset.pull_aug(img_index)
+
+    # visualize archor box
+    viz_prior_box(writer, priorbox, image, epoch)
+    
+    # get preproc
+    transform = data_loader.dataset.transform
+    transform.add_writer(writer, epoch)
+    transform(image, boxes, labels)
+    
+    # preproc image & visualize preprocess prograss
+    # images = Variable(transform(image, anno)[0].unsqueeze(0), volatile=True)
+    # images = images.cuda()
+    '''
+    # visualize feature map in base and extras
+    base_out = viz_module_feature_maps(writer, model.base, images, module_name='base', epoch=epoch)
+    extras_out = viz_module_feature_maps(writer, model.extras, base_out, module_name='extras', epoch=epoch)
+    # visualize feature map in feature_extractors
+    viz_feature_maps(writer, model(images, 'feature'), module_name='feature_extractors', epoch=epoch)
+
+    model.train()
+    images.requires_grad = True
+    images.volatile=False
+    base_out = viz_module_grads(writer, model, model.base, images, images, preproc.means, module_name='base', epoch=epoch)
+    '''
+    # TODO: add more...
 
 if __name__ == '__main__':
     train()

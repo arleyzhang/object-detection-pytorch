@@ -6,7 +6,6 @@ import numpy as np
 import types
 from numpy import random
 
-
 def intersect(box_a, box_b):
     max_xy = np.minimum(box_a[:, 2:], box_b[2:])
     min_xy = np.maximum(box_a[:, :2], box_b[:2])
@@ -397,11 +396,44 @@ class PhotometricDistort(object):
         im, boxes, labels = distort(im, boxes, labels)
         return self.rand_light_noise(im, boxes, labels)
 
+def draw_bbox(image, bbxs, color=(0, 255, 0)):
+    img = image.copy()
+    bboxes = bbxs.copy()
+    # bbxs = np.array(bbxs).astype(np.int32)
+    for bbx in bboxes:
+        if bbx[2] <= 1:
+            bbx[0] *= img.shape[1]
+            bbx[1] *= img.shape[0]
+            bbx[2] *= img.shape[1]
+            bbx[3] *= img.shape[0]            
+        bbx = bbx.astype(np.int32)
+        cv2.rectangle(img, (bbx[0], bbx[1]), (bbx[2], bbx[3]), color, 5)
+    # img = img[...,::-1]
+    return img
+
+class WriteImage(object):
+    def __init__(self, writer=None, epoch=0, augname=''):
+        self.writer = writer
+        self.epoch = epoch
+        self.augname = augname
+
+
+    def __call__(self, img, boxes, labels):
+        image_show = draw_bbox(img, boxes)
+        # image_show = img.copy()
+        cv2.imwrite('demo/temp.jpg', image_show)
+        image_show = cv2.imread('demo/temp.jpg')
+        image_show = image_show[...,::-1]
+        self.writer.add_image('preprocess/%s'%self.augname, image_show, self.epoch)
+        return img, boxes, labels
+
 
 class SSDAugmentation(object):
-    def __init__(self, size=300, mean=(104, 117, 123)):
+    def __init__(self, size=300, mean=(104, 117, 123), writer=None):
         self.mean = mean
         self.size = size
+        self.writer = writer
+        self.epoch = 0
         self.augment = Compose([
             ConvertFromInts(),
             ToAbsoluteCoords(),
@@ -415,4 +447,39 @@ class SSDAugmentation(object):
         ])
 
     def __call__(self, img, boxes, labels):
-        return self.augment(img, boxes, labels)
+        if self.writer is not None:
+            self.augment = Compose([
+                WriteImage(self.writer, self.epoch, '0_input'),
+                ConvertFromInts(),
+                # WriteImage(self.writer, self.epoch, '1_ConvertFromInts'),
+                ToAbsoluteCoords(),
+                # WriteImage(self.writer, self.epoch, '2_ToAbsoluteCoords'),
+                PhotometricDistort(),
+                WriteImage(self.writer, self.epoch, '3_PhotometricDistort'),
+                Expand(self.mean),
+                WriteImage(self.writer, self.epoch, '4_Expand'),
+                RandomSampleCrop(),
+                WriteImage(self.writer, self.epoch, '5_RandomSampleCrop'),
+                RandomMirror(),
+                WriteImage(self.writer, self.epoch, '6_RandomMirror'),
+                ToPercentCoords(),
+                # WriteImage(self.writer, self.epoch, '7_ToPercentCoords'),
+                Resize(self.size),
+                WriteImage(self.writer, self.epoch, '8_Resize'),
+                SubtractMeans(self.mean),
+                WriteImage(self.writer, self.epoch, '9_SubtractMeans_final')
+            ])
+            out = self.augment(img, boxes, labels)
+            self.release_writer()
+            return out
+        else:
+            return self.augment(img, boxes, labels)
+
+    def add_writer(self, writer, epoch=None):
+        self.writer = writer
+        self.epoch = epoch if epoch is not None else self.epoch + 1
+    
+    def release_writer(self):
+        self.writer = None
+
+

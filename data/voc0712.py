@@ -143,6 +143,19 @@ class VOCDetection(data.Dataset):
         return torch.from_numpy(img).permute(2, 0, 1), target, height, width
         # return torch.from_numpy(img), target, height, width
 
+    def pull_aug(self, index):
+        img_id = self.ids[index]
+        target = ET.parse(self._annopath % img_id).getroot()
+        img = cv2.imread(self._imgpath % img_id)
+        height, width, channels = img.shape
+
+        if self.target_transform is not None:
+            target = self.target_transform(target, width, height)
+
+        target = np.array(target)
+
+        return img, target[:, :4], target[:, 4]
+
     def pull_image(self, index):
         '''Returns the original image object at index in PIL form
 
