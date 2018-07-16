@@ -202,14 +202,18 @@ def train():
             epoch += 1
 
         # tensorboard vis every epoch
-        if args.tensorboard and not args.visdom and (iteration % epoch_size == 0):
+        if args.tensorboard and not args.visdom and iteration != 0 and (iteration % epoch_size == 0):
             visualize_epoch(net, visualize_loader, priorbox, writer, epoch)
-            # reset epoch loss counters
-            epoch += 1
 
-        # tensorboard vis every iteration
-        # if args.tensorboard and not args.visdom:
-        #     visualize_epoch(net, visualize_loader, priorbox, writer, iteration)
+            # # log for tensorboard
+            # writer.add_scalar('Train/loc_loss', loc_loss/epoch_size, epoch)
+            # writer.add_scalar('Train/conf_loss', conf_loss/epoch_size, epoch)
+
+            # reset epoch loss counters
+            loc_loss = 0
+            conf_loss = 0
+            repul_loss = 0
+            epoch += 1
 
         if iteration in cfg['lr_steps']:
             step_index += 1
@@ -261,6 +265,11 @@ def train():
                 print('Iteration ' + repr(iteration) + ' || Loss: %.4f ' % (loss.data[0]) +\
                 ' || conf_loss: %.4f ' % (loss_c.data[0]) + ' || smoothl1 loss: %.4f ' % (loss_l.data[0]) +\
                 ' || repul_loss: %.4f ||' % (loss_l_repul.data[0]), end=' ')
+
+            if args.tensorboard:
+                # log for tensorboard
+                writer.add_scalar('Train/loc_loss', loss_l.data[0], iteration)
+                writer.add_scalar('Train/conf_loss', loss_c.data[0], iteration)
 
         if args.visdom:
             update_vis_plot(iteration, loss_l.data[0], loss_l_repul.data[0], loss_c.data[0], 
