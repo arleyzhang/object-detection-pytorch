@@ -51,6 +51,23 @@ ssd_coco_vgg = {
     'ssds_type': 'ssd',
 }
 
+# FPN
+fpn_voc_vgg = {
+    'num_classes': 21,
+    'lr_steps': (20000, 40000, 60000),
+    'max_iter': 80000,#120000,
+    'image_size': [300, 300],  #[H, W]
+    'min_dim': 300, #resize
+    'steps': [8, 16, 32, 64, 100, 300],
+    'min_sizes': [30, 60, 111, 162, 213, 264],
+    'max_sizes': [60, 111, 162, 213, 264, 315],
+    'aspect_ratios': [[2], [2, 3], [2, 3], [2, 3], [2], [2]],
+    'variance': [0.1, 0.2],
+    'clip': True,
+    'dataset_name': 'VOC',
+    'base_model': 'vgg16',
+    'ssds_type': 'fpn',
+}
 
 # FSSD300 CONFIGS
 fssd_voc_vgg = {

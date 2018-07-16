@@ -144,7 +144,7 @@ def add_extras(base, feature_layer, mbox, num_classes, version='fssd'):
     conf_layers = []
     in_channels = None
     '''
-    feature_layer[0]:[[22, 34, 'S'], [512, 1024, 512]]
+    feature_layer[0]:[[14, 21, 33, 'S'], [256, 512, 1024, 512]],  #concat layer
     '''
     feature_transform_channel = int(feature_layer[0][1][-1]/2)  #512/2=256
     for layer, depth in zip(feature_layer[0][0], feature_layer[0][1]):
@@ -196,10 +196,10 @@ def add_extras(base, feature_layer, mbox, num_classes, version='fssd'):
 [0]: add 'S' or '' can add extra layer
 [1]: 'S' denote stride = 2
 
-[14, 21, 33, 'S'], [256, 512, 1024, 512]  conv3-conv7
+[21, 33, 'S'], [512, 1024, 512]  conv3-conv7
 """
 extras = {
-    '300': [[[14, 21, 33, 'S'], [256, 512, 1024, 512]],  #concat layer
+    '300': [[[21, 33, 'S'], [512, 1024, 512]],  #concat layer
             [['', 'S', 'S', 'S', '', ''], [512, 512, 256, 256, 256, 256]]], #pyramid_feature_layers
     '512': [],
 }

@@ -58,24 +58,29 @@ parser.add_argument('--loss_type', default='ssd_loss', type=str,    ########## l
 args = parser.parse_args()
 
 ###################################################  some configs need to update
-snapshot_prefix = 'ssd_voc_eval0712_'
+snapshot_prefix = 'fpn_voc_0716_'
 args.dataset = 'VOC'
 
-cfg = ssd_voc_vgg
+cfg = fpn_voc_vgg
+
+#args.resume = '../../weights/fpn_voc_071515000.pth' #tmp2
 
 match_priors = False    # True: match in dataloader, False: match in loss
-test_interval = 4
+test_interval = 40000
 snapshot = 5000
 step_index = 0  #need put in args ???#ssd_voc_nocudnn0703_115000
 run_break = -5
 args.lr = 1e-3
 args.num_workers = 8
-#args.resume = '../../weights/ssd_coco_eval0710_275000.pth' #tmp2
+
+loc_weight = 1.0    #used in ssd_loss
+warm_up_num = 1000    # >0 activate warm_up
+
 
 cudnn_benchmark = False
 torch.backends.cudnn.enabled = True   #cudnn switch
 
-CUDA_VISIBLE_DEVICES="2,0,1,3"  #Specified GPUs range
+CUDA_VISIBLE_DEVICES="5,4,6,7"  #Specified GPUs range
 os.environ["CUDA_VISIBLE_DEVICES"] = CUDA_VISIBLE_DEVICES
 
 if torch.cuda.is_available():
@@ -99,9 +104,9 @@ def train():
     ssd_net, layer_dimensions = creat_model('train', cfg)
     priorbox = PriorBox(cfg)
     priors = priorbox.forward(layer_dimensions) #<class 'torch.cuda.FloatTensor'>  
-    #print('debug', priors.size(), type(priors))
+    # print('debug priors', priors.size(), type(priors))
     ssd_net.priors = Variable(priors, volatile=True)
-    #assert 1==0
+    # assert 1==0
 
     if args.dataset == 'COCO':
         if args.dataset_root == VOC_ROOT:
@@ -119,10 +124,10 @@ def train():
         else:
             match_priors = None
 
-        dataset = VOCDetection(args.dataset_root, [('2007', 'trainval_small')], #('2012', 'trainval')
+        dataset = VOCDetection(args.dataset_root, [('2007', 'trainval'), ('2012', 'trainval')], #('2012', 'trainval')
                                transform=SSDAugmentation(cfg['min_dim'],MEANS),
                                priors = match_priors)
-        val_dataset = VOCDetection(args.dataset_root, [('2007', 'test_small')],
+        val_dataset = VOCDetection(args.dataset_root, [('2007', 'test')],
                            BaseTransform(300, MEANS),
                            target_transform=VOCAnnotationTransform(False))
     #net
@@ -137,6 +142,8 @@ def train():
         checkpoint = torch.load(args.resume)
         args.start_iter = checkpoint['iteration']
         step_index = checkpoint['step_index']
+
+        print_net_info(checkpoint['state_dict'])
         ssd_net.load_state_dict(checkpoint['state_dict'])
     else:
         vgg_weights = torch.load(args.save_folder + args.basenet)
@@ -149,7 +156,7 @@ def train():
         ssd_net.loc.apply(weights_init)
         ssd_net.conf.apply(weights_init)
 
-        if cfg['ssds_type'] == 'fssd':
+        if cfg['ssds_type'] == 'fssd' or cfg['ssds_type'] == 'fpn':
             ssd_net.transforms.apply(weights_init)
             ssd_net.pyramids.apply(weights_init)
     
@@ -165,7 +172,7 @@ def train():
                                 False, args.cuda)
     elif args.loss_type == 'ssd_loss':
         criterion = MultiBoxLossSSD(cfg['num_classes'], 0.5, True, 0, True, 3, 0.5,
-                                False, args.cuda)
+                                False, loc_weight=loc_weight, use_gpu=args.cuda)
 
     if step_index != 0:  #consider 8w, 12w...   #not iteration in cfg['lr_steps'] and 
         adjust_learning_rate(optimizer, args.gamma, step_index)
@@ -234,10 +241,14 @@ def train():
                 step_index += 1
                 adjust_learning_rate(optimizer, args.gamma, step_index)
             
+            if warm_up_num > 0 and args.start_iter == 0 and iteration == 0:        #warm up start
+                adjust_learning_rate(optimizer, args.gamma, 1)
+            elif warm_up_num > 0 and args.start_iter == 0 and iteration == warm_up_num:    #warm up end
+                adjust_learning_rate(optimizer, args.gamma, 0)
+            
             #record time
             # timers['prepro_time'].tic()
             # # load train data
-            # images, targets, _, _ = data
             # try:
             #     images, targets, _, _ = next(batch_iterator)
             # except StopIteration:
@@ -396,6 +407,11 @@ def update_vis_plot(iteration, loc, conf, window1, window2, update_type,
             win=window2,
             update=True
         )
+
+def print_net_info(model):
+    #model_dict = model.state_dict()
+    for k, v in model.items():
+        print(k)
 
 
 if __name__ == '__main__':

@@ -21,12 +21,13 @@ from PIL import Image, ImageDraw, ImageFont
 
 def save_img(image, gt, top_boxes, line_width = 2):
 
+    image.save('tmp_src_{}.jpg'.format(image.size[0]))
     print(top_boxes)
     print('\n\n', gt)
     #width, height = im.size
     draw = ImageDraw.Draw(image)
     for i in range(top_boxes.shape[0]):
-        xmin = int(round(top_boxes[i][0] * image.size[0]))
+        xmin = int(round(top_boxes[i][0] * image.size[0]))    #image.size[0]
         ymin = int(round(top_boxes[i][1] * image.size[1]))
         xmax = int(round(top_boxes[i][2] * image.size[0]))
         ymax = int(round(top_boxes[i][3] * image.size[1]))
@@ -71,7 +72,7 @@ if __name__ == '__main__':
     input_h = 300
     input_w = 300
 
-    is_combine = True
+    is_combine = False
     if is_combine:
         input_w *= 2
         cfg['image_size'] = [input_h, input_w]
@@ -105,8 +106,11 @@ if __name__ == '__main__':
 
         if is_combine:
             im = im.numpy()
+            
             combine_img = np.concatenate((im, im), axis = 2)
             print('img shape:', combine_img.shape, 'hw:', h, w)
+            print('pixel:', im[0][0][0], combine_img[0][0][300])
+            print('pixel1:', im[0][150][150], combine_img[0][150][450])
             im = torch.from_numpy(combine_img)
 
         x = Variable(im.unsqueeze(0))

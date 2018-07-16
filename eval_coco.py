@@ -59,7 +59,7 @@ args = parser.parse_args()
 ###########################################
 # test with trained_model
 if args.trained_model is None:
-    args.trained_model = '../../weights/ssd_coco_eval0710_275000.pth'
+    args.trained_model = '../../weights/ssd_coco_eval0710_395000.pth'
 cfg=ssd_coco_vgg
 
 #Annotations for crownd #Annotations_src for normal voc

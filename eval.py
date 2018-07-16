@@ -57,8 +57,8 @@ args = parser.parse_args()
 ###########################################
 # test with trained_model
 if args.trained_model is None:
-    args.trained_model = '../../weights/ssd_voc_best_120016.pth'
-cfg = ssd_voc_vgg
+    args.trained_model = '../../weights/fpn_voc_0716_40000.pth'
+cfg = fpn_voc_vgg
 
 #Annotations for crownd #Annotations_src for normal voc
 annopath = os.path.join(args.voc_root, 'VOC2007', 'Annotations', '%s.xml')
@@ -69,7 +69,7 @@ devkit_path = args.voc_root + 'VOC' + YEAR
 dataset_mean = (104, 117, 123)
 set_type = 'test' #test_full   #test_crowd
 
-CUDA_VISIBLE_DEVICES="1"        #####################Specified GPUs range
+CUDA_VISIBLE_DEVICES="6"        #####################Specified GPUs range
 os.environ["CUDA_VISIBLE_DEVICES"] = CUDA_VISIBLE_DEVICES
 
 print ('data_path:', devkit_path, 'test_type:', set_type, 'test_model:', args.trained_model,\
@@ -363,6 +363,8 @@ def test_net(save_folder, net, cuda, dataset, transform, top_k,
 
     for i in range(num_images):
         im, gt, h, w, _, _ = dataset.pull_item(i)
+        #print('XXXXX', im)
+        #assert(1==0)
 
         x = Variable(im.unsqueeze(0))
         if args.cuda:

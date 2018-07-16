@@ -33,9 +33,10 @@ class MultiBoxLossSSD(nn.Module):
     #                             False, args.cuda)
     def __init__(self, num_classes, overlap_thresh, prior_for_matching,
                  bkg_label, neg_mining, neg_pos, neg_overlap, encode_target,
-                 use_gpu=True):
+                 loc_weight=1.0, use_gpu=True):
         super(MultiBoxLossSSD, self).__init__()
         self.use_gpu = use_gpu
+        self.loc_weight = loc_weight
         self.num_classes = num_classes
         self.threshold = overlap_thresh
         self.background_label = bkg_label
@@ -68,6 +69,7 @@ class MultiBoxLossSSD(nn.Module):
         if loc_t is None:
             loc_t = torch.Tensor(num, num_priors, 4)
             conf_t = torch.LongTensor(num, num_priors)
+
             for idx in range(num):
                 truths = targets[idx][:, :-1].data
                 labels = targets[idx][:, -1].data
@@ -75,10 +77,10 @@ class MultiBoxLossSSD(nn.Module):
                 match_ssd(self.threshold, truths, defaults, self.variance, labels,
                     loc_t, conf_t, idx)
 
-            #print('loss_-----------------------', '\n', loc_t)
         if self.use_gpu:
             loc_t = loc_t.cuda()
             conf_t = conf_t.cuda()
+        
         # wrap targets
         loc_t = Variable(loc_t, requires_grad=False)
         conf_t = Variable(conf_t, requires_grad=False)
@@ -119,4 +121,4 @@ class MultiBoxLossSSD(nn.Module):
         N = num_pos.data.sum()
         loss_l /= N
         loss_c /= N
-        return loss_l, loss_c
+        return self.loc_weight * loss_l, loss_c

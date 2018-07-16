@@ -2,12 +2,12 @@ import torch
 import torch.nn as nn
 from torch.autograd import Variable
 
-from models import ssd
-from models import fssd
+from models import ssd, fssd, fpn
 
 ssds_map = {
                 'ssd': ssd.build_ssd,
                 'fssd': fssd.build_fssd,
+                'fpn': fpn.build_fpn,
             }
 
 from models import vgg
@@ -21,7 +21,8 @@ def creat_model(phase, cfg, input_h = 300, input_w = 300):
     model = ssds_map[cfg['ssds_type']](phase, cfg, base)
 
     layer_dimension = get_layer_dimension(model, input_h, input_w)
-    #print('xxxxxxxxx', layer_dimension)
+    print('feature maps:', layer_dimension)
+    
     return model, layer_dimension
 
 
