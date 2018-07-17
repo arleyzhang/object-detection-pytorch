@@ -169,8 +169,50 @@ def viz_prior_box(writer, prior_box, image=None, epoch=0):
         writer.add_image('example_prior_boxs/feature_map_{}'.format(k), image_show, epoch)
 
 
-def add_pr_curve_raw(writer, tag, precision, recall, epoch=0):
-    num_thresholds = len(precision)
+# def add_pr_curve_raw(writer, tag, precision, recall, epoch=0):
+#     num_thresholds = len(precision)
+#     writer.add_pr_curve_raw(
+#         tag=tag,
+#         true_positive_counts = -np.ones(num_thresholds),
+#         false_positive_counts = -np.ones(num_thresholds),
+#         true_negative_counts = -np.ones(num_thresholds),
+#         false_negative_counts = -np.ones(num_thresholds),
+#         precision = precision,
+#         recall = recall,
+#         global_step = epoch,
+#         num_thresholds = num_thresholds
+#     )
+
+
+# def viz_pr_curve(writer, precision, recall, epoch=0):
+#     for i, (_prec, _rec) in enumerate(zip(precision, recall)):
+#         # _prec, _rec = prec, rec
+#         num_thresholds = min(500, len(_prec))
+#         if num_thresholds != len(_prec):
+#             gap = int(len(_prec) / num_thresholds)
+#             _prec = np.append(_prec[::gap], _prec[-1])
+#             _rec  = np.append(_rec[::gap], _rec[-1])
+#             num_thresholds = len(_prec)
+#         # the pr_curve_raw_data_pb() needs the a ascending precisions array and a descending recalls array
+#         _prec.sort()
+#         _rec[::-1].sort()
+#         # TODO: need to change i to the name of the class
+#         # 0 is the background class as default
+#         add_pr_curve_raw(
+#             writer=writer, tag='pr_curve/class_{}'.format(i+1), precision = _prec, recall = _rec, epoch = epoch )
+
+def viz_pr_curve_new(writer, tag, precision, recall, epoch=0):
+    # num_thresholds = len(precision)
+    num_thresholds = min(500, len(precision))
+    if num_thresholds != len(precision):
+        gap = int(len(precision) / num_thresholds)
+        precision = np.append(precision[::gap], precision[-1])
+        recall  = np.append(recall[::gap], recall[-1])
+        num_thresholds = len(precision)
+    precision.sort()
+    recall[::-1].sort()
+    # print(precision)
+    # print(recall)
     writer.add_pr_curve_raw(
         tag=tag,
         true_positive_counts = -np.ones(num_thresholds),
@@ -182,24 +224,6 @@ def add_pr_curve_raw(writer, tag, precision, recall, epoch=0):
         global_step = epoch,
         num_thresholds = num_thresholds
     )
-
-
-def viz_pr_curve(writer, precision, recall, epoch=0):
-    for i, (_prec, _rec) in enumerate(zip(precision, recall)):
-        # _prec, _rec = prec, rec
-        num_thresholds = min(500, len(_prec))
-        if num_thresholds != len(_prec):
-            gap = int(len(_prec) / num_thresholds)
-            _prec = np.append(_prec[::gap], _prec[-1])
-            _rec  = np.append(_rec[::gap], _rec[-1])
-            num_thresholds = len(_prec)
-        # the pr_curve_raw_data_pb() needs the a ascending precisions array and a descending recalls array
-        _prec.sort()
-        _rec[::-1].sort()
-        # TODO: need to change i to the name of the class
-        # 0 is the background class as default
-        add_pr_curve_raw(
-            writer=writer, tag='pr_curve/class_{}'.format(i+1), precision = _prec, recall = _rec, epoch = epoch )
 
 
 def viz_archor_strategy(writer, sizes, labels, epoch=0):

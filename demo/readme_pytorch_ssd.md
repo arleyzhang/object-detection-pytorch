@@ -44,11 +44,18 @@
 环境配置：
 pip install tensorboardX
 pip install tensorflow (只安装cpu版本就可以)
-训练时指定tensorboard为true：
-python train.py --tensorboard true （默认log_dir='./experiments/models/ssd_voc'）
-tensorboard使用命令：
-tensorboard --logdir ./experiments/models/ssd_voc （ip:6006 可以查看可视化结果）
+
 支持可视化功能如下：
 (1)priorbox可视化；
 (2)augmentation可视化；
 (3)训练loss曲线可视化；
+(4)每一类pr曲线可视化；
+
+tensorboard使用命令：
+tensorboard --logdir ./experiments/models/ssd_voc （ip:6006 可以查看可视化结果）
+
+训练时指定tensorboard为true，可以查看可视化(1)(2)(3):
+python train.py --tensorboard true （默认log_dir='./experiments/models/ssd_voc'）
+
+测试时可以查看可视化(4):
+python eval.py 

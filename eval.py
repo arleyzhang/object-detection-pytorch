@@ -24,6 +24,10 @@ import numpy as np
 import pickle
 import cv2
 
+from tensorboardX import SummaryWriter
+from utils.visualize_utils import *
+from layers import *
+
 if sys.version_info[0] == 2:
     import xml.etree.cElementTree as ET
 else:
@@ -49,6 +53,8 @@ parser.add_argument('--voc_root', default=VOC_ROOT,
                     help='Location of VOC root directory')
 parser.add_argument('--cleanup', default=True, type=str2bool,
                     help='Cleanup and remove results files following eval')
+parser.add_argument('--log_dir', default='./experiments/models/ssd_voc', type=str,  
+                    help='tensorboard log_dir')
 
 args = parser.parse_args()
 
@@ -172,6 +178,7 @@ def write_voc_results_file(all_boxes, dataset):
 
 
 def do_python_eval(output_dir='output', use_07=True):
+    writer = SummaryWriter(log_dir=args.log_dir)
     cachedir = os.path.join(devkit_path, 'annotations_cache')#devkit_path=~/data/VOCdevkit/VOC2007/
     aps = []
     # The PASCAL VOC metric changed in 2010
@@ -188,6 +195,9 @@ def do_python_eval(output_dir='output', use_07=True):
         print('AP for {} = {:.4f}'.format(cls, ap))
         with open(os.path.join(output_dir, cls + '_pr.pkl'), 'wb') as f:
             pickle.dump({'rec': rec, 'prec': prec, 'ap': ap}, f)
+
+        viz_pr_curve_new(writer, cls, prec, rec)
+
     print('Mean AP = {:.4f}'.format(np.mean(aps)))
     print('~~~~~~~~')
     print('Results:')
