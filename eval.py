@@ -57,8 +57,8 @@ args = parser.parse_args()
 ###########################################
 # test with trained_model
 if args.trained_model is None:
-    args.trained_model = '../../weights/fpn_voc_0716_40000.pth'
-cfg = fpn_voc_vgg
+    args.trained_model = '../../weights/ssd_voc_loc_w2_0717_120000.pth'
+cfg = ssd_voc_vgg
 
 #Annotations for crownd #Annotations_src for normal voc
 annopath = os.path.join(args.voc_root, 'VOC2007', 'Annotations', '%s.xml')

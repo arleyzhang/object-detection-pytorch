@@ -103,12 +103,12 @@ class MultiBoxLoss(nn.Module):
         loc_t = loc_t[pos_idx].view(-1, 4)  #[num*num_priors,4] encoded offsets to learn   [tx, ty, tw, th]
         loc_g = loc_g[pos_idx].view(-1, 4)  #prior_box with second largest IoU
         
-        #priors = priors.unsqueeze(0).expand_as(loc_data)    #[]
+        #priors = priors.unsqueeze(0).expand_as(pos_idx)    #
         priors = priors[pos_idx].view(-1, 4)    #Shape(num_priors,4)???????
         
         loss_l = F.smooth_l1_loss(loc_p, loc_t, size_average=False)
 
-        repul_loss = RepulsionLoss(sigma=0.)
+        repul_loss = RepulsionLoss(sigma=1.)#0.
         loss_l_repul = repul_loss(loc_p, loc_g, priors)
 
         # Compute max conf across batch for hard negative mining

@@ -33,10 +33,10 @@ class MultiBoxLossSSD(nn.Module):
     #                             False, args.cuda)
     def __init__(self, num_classes, overlap_thresh, prior_for_matching,
                  bkg_label, neg_mining, neg_pos, neg_overlap, encode_target,
-                 loc_weight=1.0, use_gpu=True):
+                 min_neg_samples = 1, loc_weight=1.0, use_gpu=True):
         super(MultiBoxLossSSD, self).__init__()
         self.use_gpu = use_gpu
-        self.loc_weight = loc_weight
+        self.loc_weight = loc_weight#Variable(torch.FloatTensor([loc_weight]).cuda, requires_grad=True)
         self.num_classes = num_classes
         self.threshold = overlap_thresh
         self.background_label = bkg_label
@@ -44,6 +44,7 @@ class MultiBoxLossSSD(nn.Module):
         self.use_prior_for_matching = prior_for_matching
         self.do_neg_mining = neg_mining
         self.negpos_ratio = neg_pos
+        self.min_neg_samples = min_neg_samples
         self.neg_overlap = neg_overlap
         self.variance = VARIANCE
 
@@ -71,6 +72,11 @@ class MultiBoxLossSSD(nn.Module):
             conf_t = torch.LongTensor(num, num_priors)
 
             for idx in range(num):
+                #print('debug ----', idx, '\n', targets[idx][:, -1].data[0])
+                if targets[idx][:, -1].data[0] < 0:    #target is -1, no objs
+                    loc_t[idx] = torch.Tensor([[-1, -1, -1, -1]] * num_priors)
+                    conf_t[idx] = torch.LongTensor([0] * num_priors)    #is background
+                    continue
                 truths = targets[idx][:, :-1].data
                 labels = targets[idx][:, -1].data
                 defaults = priors.data              #Shape(8732, 4)
@@ -93,7 +99,8 @@ class MultiBoxLossSSD(nn.Module):
         pos_idx = pos.unsqueeze(pos.dim()).expand_as(loc_data)  #Shape(32, 8732, 4)
         loc_p = loc_data[pos_idx].view(-1, 4)   #predict [dx, dy, sx, sy], Shape(32, 8732, 4)
         loc_t = loc_t[pos_idx].view(-1, 4)  #encoded offsets to learn   [tx, ty, tw, th]
-        loss_l = F.smooth_l1_loss(loc_p, loc_t, size_average=False)
+        if loc_p.dim() != 0:
+            loss_l = F.smooth_l1_loss(loc_p, loc_t, size_average=False)
 
         # Compute max conf across batch for hard negative mining
         batch_conf = conf_data.view(-1, self.num_classes)   #Shape(num*num_priors, 21)
@@ -106,7 +113,8 @@ class MultiBoxLossSSD(nn.Module):
         _, loss_idx = loss_c.sort(1, descending=True)   #sorted loss_c, Shape(num, num_priors)
         _, idx_rank = loss_idx.sort(1)
         num_pos = pos.long().sum(1, keepdim=True)
-        num_neg = torch.clamp(self.negpos_ratio*num_pos, max=pos.size(1)-1) #num_neg
+        num_neg = torch.clamp(self.negpos_ratio*num_pos, min=self.min_neg_samples, max=pos.size(1)-1) #num_neg
+        
         neg = idx_rank < num_neg.expand_as(idx_rank)    #get neg with idx < num_neg
 
         # Confidence Loss Including Positive and Negative Examples

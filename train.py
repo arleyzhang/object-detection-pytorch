@@ -58,10 +58,10 @@ parser.add_argument('--loss_type', default='ssd_loss', type=str,    ########## l
 args = parser.parse_args()
 
 ###################################################  some configs need to update
-snapshot_prefix = 'fpn_voc_0716_'
+snapshot_prefix = 'ssd_voc_loc_w2_0717_'
 args.dataset = 'VOC'
 
-cfg = fpn_voc_vgg
+cfg = ssd_voc_vgg
 
 #args.resume = '../../weights/fpn_voc_071515000.pth' #tmp2
 
@@ -69,18 +69,20 @@ match_priors = False    # True: match in dataloader, False: match in loss
 test_interval = 40000
 snapshot = 5000
 step_index = 0  #need put in args ???#ssd_voc_nocudnn0703_115000
-run_break = -5
+run_break = 4000
 args.lr = 1e-3
+args.batch_size = 8
 args.num_workers = 8
+args.loss_type = 'ssd_loss'
 
-loc_weight = 1.0    #used in ssd_loss
-warm_up_num = 1000    # >0 activate warm_up
+loc_weight = 2.0    #used in ssd_loss
+warm_up_num = 100    # >0 activate warm_up
 
 
 cudnn_benchmark = False
 torch.backends.cudnn.enabled = True   #cudnn switch
 
-CUDA_VISIBLE_DEVICES="5,4,6,7"  #Specified GPUs range
+CUDA_VISIBLE_DEVICES="2,3"  #Specified GPUs range
 os.environ["CUDA_VISIBLE_DEVICES"] = CUDA_VISIBLE_DEVICES
 
 if torch.cuda.is_available():
@@ -124,10 +126,10 @@ def train():
         else:
             match_priors = None
 
-        dataset = VOCDetection(args.dataset_root, [('2007', 'trainval'), ('2012', 'trainval')], #('2012', 'trainval')
+        dataset = VOCDetection(args.dataset_root, [('2007', 'trainval_small')], #('2012', 'trainval')
                                transform=SSDAugmentation(cfg['min_dim'],MEANS),
                                priors = match_priors)
-        val_dataset = VOCDetection(args.dataset_root, [('2007', 'test')],
+        val_dataset = VOCDetection(args.dataset_root, [('2007', 'test_small')],
                            BaseTransform(300, MEANS),
                            target_transform=VOCAnnotationTransform(False))
     #net
@@ -317,17 +319,10 @@ def train():
                                 'state_dict': ssd_net.state_dict()},
                                 args.save_folder,
                                 snapshot_prefix+repr(iteration) + '.pth')
-            #save model in end of training
-            if iteration == cfg['max_iter'] - 1:
-                save_checkpoint({'iteration': iteration,
-                            'step_index': step_index,
-                            'state_dict': ssd_net.state_dict()},
-                            args.save_folder,
-                            snapshot_prefix+repr(cfg['max_iter']) + '.pth')
-                return 0
             
              ###eval model   ##################################
-            if iteration % test_interval == 0 and iteration != args.start_iter:
+            if (iteration % test_interval == 0 and iteration != args.start_iter) or\
+                                                    iteration == cfg['max_iter'] - 1:
                 print('Start eval ......')
                 net.eval()
                 timers['eval_time'].tic()
@@ -336,7 +331,17 @@ def train():
                 print('Iteration ' + repr(iteration) + ' || mAP: %.3f' % (mAP) + ' ||eval_time: %.4f/%.4f' %
                     (timers['eval_time'].diff, timers['eval_time'].average_time))
                 net.train()
-            
+
+            #save model in end of training
+            if iteration == cfg['max_iter'] - 1:
+                print('Saving state, iter:', snapshot_prefix+repr(cfg['max_iter']) + '.pth')
+                save_checkpoint({'iteration': iteration,
+                            'step_index': step_index,
+                            'state_dict': ssd_net.state_dict()},
+                            args.save_folder,
+                            snapshot_prefix+repr(cfg['max_iter']) + '.pth')
+                return 0
+
             if iteration == run_break + args.start_iter: return 0
             iteration += 1
             timers['prepro_time'].tic()

@@ -54,8 +54,8 @@ ssd_coco_vgg = {
 # FPN
 fpn_voc_vgg = {
     'num_classes': 21,
-    'lr_steps': (20000, 40000, 60000),
-    'max_iter': 80000,#120000,
+    'lr_steps': (80000, 100000, 120000),
+    'max_iter': 120000,#120000,
     'image_size': [300, 300],  #[H, W]
     'min_dim': 300, #resize
     'steps': [8, 16, 32, 64, 100, 300],

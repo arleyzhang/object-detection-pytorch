@@ -13,24 +13,15 @@ import math
 
 class RepulsionLoss(nn.Module):
 
-    def __init__(self, use_gpu=True, sigma=0.):
+    def __init__(self, sigma=0., use_cuda=True):
         super(RepulsionLoss, self).__init__()
-        self.use_gpu = use_gpu
+        self.use_cuda = use_cuda
         self.variance = VARIANCE
-        self.sigma = sigma
-        
-    # TODO 
-    def smoothln(self, x, smooth=0.):    #need to test. test success
-        #sigma = torch.tensor(sigma)
 
-        ##### toch-0.3 not support torch.where()
-        # sigma = torch.from_numpy(np.array([sigma])).float()
-        # return torch.where(
-        #     x <= sigma,    #condition   x.gt(smooth)
-        #     -torch.log(1 - x),  #if condition is true
-        #     ((x - sigma) / (1. - sigma)) - torch.log(1. - sigma)   #else
-        # )
-        pass
+        self.sigma = Variable(torch.FloatTensor([sigma]), requires_grad=False)
+
+        if use_cuda:
+            self.sigma = self.sigma.cuda()
 
     #repul_loss(loc_p, loc_g, priors)
     def forward(self, loc_data, ground_data, prior_data):
@@ -38,15 +29,27 @@ class RepulsionLoss(nn.Module):
         decoded_boxes = decode_new(loc_data, Variable(prior_data.data, requires_grad=False), self.variance)
         
         iog = IoG(ground_data, decoded_boxes)
-        # sigma = 1
-        # loss = torch.sum(-torch.log(1-iog+1e-10))  
-        # sigma = 0
-        # sigma = 1.
-        # idx_ = iog <= sigma
-        # iog[idx_] = -torch.log(1 - iog[idx_] + 1e-10)
-        # idx_ = ~idx_
-        # iog[idx_] = ((iog[idx_]  - sigma) / (1. - sigma + 1e-10)) - math.log(1. - sigma + 1e-10)
+        
+        loss_repgt = smoothln(iog, self.sigma, self.use_cuda)
 
-        loss_repgt = torch.sum(iog)
         #print ('loss_repgt', loss_repgt.size()) 
         return loss_repgt
+
+def smoothln(x, sigma, use_cuda = True):    #need to test. test success
+    loss_repgt = Variable(torch.FloatTensor([0.]), requires_grad=True)
+    if use_cuda:
+        loss_repgt = loss_repgt.cuda()
+
+    mask1 = x.ge(sigma)   # >= sigma return 1 else 0
+    term1 = torch.masked_select(x, mask1)  #Shape(num*num_priors)
+    if term1.dim() != 0:
+        term1 =  -torch.log(1 - term1 + 1e-10)
+        loss_repgt += torch.sum(term1)
+
+    mask2 = x.lt(sigma)   # < sigma return 1 else 0
+    term2 = torch.masked_select(x, mask2)  #Shape(num*num_priors)
+    if term2.dim() != 0:
+        term2 =  (term2 - sigma) / (1. - sigma + 1e-10) - torch.log(1. - sigma + 1e-10)
+        loss_repgt += torch.sum(term1)
+    
+    return loss_repgt

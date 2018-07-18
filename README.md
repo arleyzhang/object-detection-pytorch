@@ -11,11 +11,12 @@
 | Faster R-CNN (VGG16)   |   73.2   |             7             |             |    
 | YOLOv2 (Darknet-19)    |   78.6   |            40             |             |
 | R-FCN (ResNet-101)     |   80.5   |             9             |             |
-| SSD300* (VGG16)        |   77.2   |            46             |    77.6     |
+| SSD300* (VGG16)        |   77.2   |            46             |    77.6     |  77.5(locw1.5) 77.8（locw2）
 | SSD512* (VGG16)        |   79.8   |            19             |             |
 | RFBNet300 (VGG16)      | **80.5** |            83             |             |
 | RFBNet512 (VGG16)      | **82.2** |            38             |             |
 | FSSD300 (VGG)          |   78.8   |       120 (1080Ti)        |             |
+| FPN300 (VGG)           |          |                           |    78.3     |
 
 ### COCO 
 | System                       | *test-dev mAP* | **Time** (Titan X Maxwell) | **(0.5)**  |**Our mAP** |

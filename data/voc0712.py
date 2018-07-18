@@ -134,17 +134,19 @@ class VOCDetection(data.Dataset):
 
         if self.transform is not None:
             target = np.array(target)   ##############bug if target==0
-            #print (target.shape, '================')
-            if target.size == 0:
-                img, boxes, labels = self.transform(img)
+            if target.size == 0:    #no target
+                img, boxes, labels = self.transform(img, None, None)
+                boxes = [[-1, -1, -1, -1]]
+                labels = [-1]
+                #print('no objs----------- in voc.py')
             else:
                 img, boxes, labels = self.transform(img, target[:, :4], target[:, 4])
             # to rgb
             img = img[:, :, (2, 1, 0)]
-            # img = img.transpose(2, 0, 1)
-            target = np.hstack((boxes, np.expand_dims(labels, axis=1)))
+            
+            target = np.hstack((boxes, np.expand_dims(labels, axis=1))) #[None, None] if boxes and labels is None
         
-        if not self.priors is None:
+        if self.priors is not None:
             num_priors = self.priors.shape[0]
             loc_t = np.zeros([num_priors, 4])
             conf_t =  np.zeros([num_priors])

@@ -413,6 +413,13 @@ class SSDAugmentation(object):
             Resize(self.size),
             SubtractMeans(self.mean)
         ])
+        self.base_transform = Compose([
+            Resize(self.size),
+            SubtractMeans(self.mean)
+        ])
 
-    def __call__(self, img, boxes, labels):
-        return self.augment(img, boxes, labels)
+    def __call__(self, img, boxes=None, labels=None):
+        if boxes is None:
+            return self.base_transform(img, boxes, labels)
+        else:
+            return self.augment(img, boxes, labels)
