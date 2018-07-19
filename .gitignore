@@ -15,7 +15,7 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
+#lib/
 lib64/
 parts/
 sdist/
@@ -129,13 +129,19 @@ data/ssd_dataloader.py
 
 ####### added by lei
 # for folder
-logs/
 __pycache__/
 coco300_35k/
 ssd300_120000/
 eval/
 
+# files enough for reimplementation
+jobs/
 
+# running script and models and eval results and logs.
+results/
+
+# log dir for tensorboard
+logs/
 
 # for .files
 *DS_Store*
