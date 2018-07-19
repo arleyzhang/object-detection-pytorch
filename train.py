@@ -1,7 +1,6 @@
 # -*- coding:utf-8 -*-
 from data import *
 from layers.modules import MultiBoxLoss, MultiBoxLossSSD
-from layers.functions import PriorBox
 
 from utils import * #EvalSolver, Timer, SSDAugmentation
 from models.model_build import creat_model
@@ -18,30 +17,35 @@ import torch.nn.init as init
 import torch.utils.data as data
 import numpy as np
 import argparse
+from tensorboardX import SummaryWriter
+from utils.visualize_utils import *
+from layers import *
+import random
 
 def str2bool(v):
     return v.lower() in ("yes", "true", "t", "1")
 
+
 parser = argparse.ArgumentParser(
     description='Single Shot MultiBox Detector Training With Pytorch')
 train_set = parser.add_mutually_exclusive_group()
-parser.add_argument('--dataset', default='VOC', choices=['VOC', 'COCO'],    #################dataset type
+parser.add_argument('--dataset', default='VOC', choices=['VOC', 'COCO'],   #################dataset type
                     type=str, help='VOC or COCO')
 parser.add_argument('--dataset_root', default=VOC_ROOT,
                     help='Dataset root directory path')
-parser.add_argument('--basenet', default='vgg16_reducedfc.pth',    #######init weights， #ssd_VOC_180621_40000
+parser.add_argument('--basenet', default='vgg16_reducedfc.pth', #######init weights， #ssd_VOC_180621_40000
                     help='Pretrained base model')   #vgg16_reducedfc
 parser.add_argument('--batch_size', default=32, type=int,    ########################test is 8 default=32
                     help='Batch size for training')
-parser.add_argument('--resume', default=None, type=str,    #####################resume from snapshot
+parser.add_argument('--resume', default=None, type=str, #####################resume from snapshot
                     help='Checkpoint state_dict file to resume training from')
 parser.add_argument('--start_iter', default=0, type=int,
                     help='Resume training at this iter')
-parser.add_argument('--num_workers', default=4, type=int,
+parser.add_argument('--num_workers', default=12, type=int,
                     help='Number of workers used in dataloading')
 parser.add_argument('--cuda', default=True, type=str2bool,
                     help='Use CUDA to train model')
-parser.add_argument('--lr', '--learning-rate', default=1e-3, type=float,    ############test lr
+parser.add_argument('--lr', '--learning-rate', default=1e-3, type=float,
                     help='initial learning rate')
 parser.add_argument('--momentum', default=0.9, type=float,
                     help='Momentum value for optim')
@@ -51,10 +55,14 @@ parser.add_argument('--gamma', default=0.1, type=float,
                     help='Gamma update for SGD')
 parser.add_argument('--visdom', default=False, type=str2bool,
                     help='Use visdom for loss visualization')
-parser.add_argument('--save_folder', default='../../weights/',    ################ snapshot and pretrained path
+parser.add_argument('--tensorboard', default=False, type=str2bool,
+                    help='Use tensorboard')
+parser.add_argument('--save_folder', default='weights/',  ################ snapshot or pretrained
                     help='Directory for saving checkpoint models')
 parser.add_argument('--loss_type', default='ssd_loss', type=str,    ########## loss type
                     help='ssd_loss or repul_loss')
+parser.add_argument('--log_dir', default='./experiments/models/ssd_voc', type=str,
+                    help='tensorboard log_dir')
 args = parser.parse_args()
 
 ###################################################  some configs need to update
@@ -102,14 +110,6 @@ if not os.path.exists(args.save_folder):    #snapshot and save_model
 def train():
     global step_index, iteration, match_priors
 
-    #init priors
-    ssd_net, layer_dimensions = creat_model('train', cfg)
-    priorbox = PriorBox(cfg)
-    priors = priorbox.forward(layer_dimensions) #<class 'torch.cuda.FloatTensor'>  
-    # print('debug priors', priors.size(), type(priors))
-    ssd_net.priors = Variable(priors, volatile=True)
-    # assert 1==0
-
     if args.dataset == 'COCO':
         if args.dataset_root == VOC_ROOT:
              args.dataset_root = COCO_ROOT
@@ -121,11 +121,6 @@ def train():
                            BaseTransform(300, MEANS),
                            target_transform=COCOAnnotationTransform(False))
     elif args.dataset == 'VOC':
-        if match_priors:
-            match_priors = priors.cpu().numpy()
-        else:
-            match_priors = None
-
         dataset = VOCDetection(args.dataset_root, [('2007', 'trainval_small')], #('2012', 'trainval')
                                transform=SSDAugmentation(cfg['min_dim'],MEANS),
                                priors = match_priors)
@@ -134,6 +129,7 @@ def train():
                            target_transform=VOCAnnotationTransform(False))
     #net
     net = ssd_net
+
     if args.cuda:
         net = torch.nn.DataParallel(ssd_net)    #device_ids=[0,1,2,3]
         cudnn.benchmark = cudnn_benchmark
@@ -168,7 +164,7 @@ def train():
     optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=args.momentum,
                           weight_decay=args.weight_decay)
     
-    ###################################################################### loss type
+loss type
     if args.loss_type == 'repul_loss':
         criterion = MultiBoxLoss(cfg['num_classes'], 0.5, True, 0, True, 3, 0.5,
                                 False, args.cuda)
@@ -227,6 +223,10 @@ def train():
     timers['iter_time'].tic()
     timers['prepro_time'].tic()
     for epoch in range(num_epochs):
+   		# tensorboard vis every epoch
+        if args.tensorboard and not args.visdom and iteration != 0 and (iteration % epoch_size == 0):
+            visualize_epoch(net, visualize_loader, priorbox, writer, epoch)
+
         for i, (images, targets, _, _, loc_t, conf_t) in enumerate(data_loader):
             timers['prepro_time'].toc()
             if images.size(0) < args.batch_size: continue
@@ -331,6 +331,11 @@ def train():
                 print('Iteration ' + repr(iteration) + ' || mAP: %.3f' % (mAP) + ' ||eval_time: %.4f/%.4f' %
                     (timers['eval_time'].diff, timers['eval_time'].average_time))
                 net.train()
+            	if args.tensorboard:
+		            # log for tensorboard
+		            writer.add_scalar('Train/loc_loss', loss_l.data[0], iteration)
+		            writer.add_scalar('Train/conf_loss', loss_c.data[0], iteration)
+
 
             #save model in end of training
             if iteration == cfg['max_iter'] - 1:
@@ -370,18 +375,6 @@ def weights_init(m):
         xavier(m.weight.data)
         m.bias.data.zero_()
 
-def load_filtered_state_dict(model, snapshot=None):
-    # By user apaszke from discuss.pytorch.org
-    print('debug-----')
-    model_dict = model.state_dict()
-    # snapshot = {k: v for k, v in snapshot.items() if k in model_dict}
-    # model_dict.update(snapshot)
-    # model.load_state_dict(model_dict)
-    for k in model_dict:
-        print(k)
-    print('////////////////')
-    for k, v in snapshot.items():
-        print(k)
 
 def create_vis_plot(_xlabel, _ylabel, _title, _legend):
     return viz.line(
@@ -418,6 +411,41 @@ def print_net_info(model):
     for k, v in model.items():
         print(k)
 
+def visualize_epoch(model, data_loader, priorbox, writer, epoch):
+    model.eval()
+
+    img_index = random.randint(0, len(data_loader.dataset)-1)
+
+    # get img
+    # image = data_loader.dataset.pull_image(img_index)
+    # img_id, anno = data_loader.dataset.pull_anno(img_index)
+
+    image, boxes, labels = data_loader.dataset.pull_aug(img_index)
+
+    # visualize archor box
+    viz_prior_box(writer, priorbox, image, epoch)
+    
+    # get preproc
+    transform = data_loader.dataset.transform
+    transform.add_writer(writer, epoch)
+    transform(image, boxes, labels)
+    
+    # preproc image & visualize preprocess prograss
+    # images = Variable(transform(image, anno)[0].unsqueeze(0), volatile=True)
+    # images = images.cuda()
+    '''
+    # visualize feature map in base and extras
+    base_out = viz_module_feature_maps(writer, model.base, images, module_name='base', epoch=epoch)
+    extras_out = viz_module_feature_maps(writer, model.extras, base_out, module_name='extras', epoch=epoch)
+    # visualize feature map in feature_extractors
+    viz_feature_maps(writer, model(images, 'feature'), module_name='feature_extractors', epoch=epoch)
+
+    model.train()
+    images.requires_grad = True
+    images.volatile=False
+    base_out = viz_module_grads(writer, model, model.base, images, images, preproc.means, module_name='base', epoch=epoch)
+    '''
+    # TODO: add more...
 
 if __name__ == '__main__':
     train()

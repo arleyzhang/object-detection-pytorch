@@ -26,6 +26,10 @@ import numpy as np
 import pickle
 import cv2
 
+from tensorboardX import SummaryWriter
+from utils.visualize_utils import *
+from layers import *
+
 if sys.version_info[0] == 2:
     import xml.etree.cElementTree as ET
 else:
@@ -39,7 +43,7 @@ parser = argparse.ArgumentParser(
     description='Single Shot MultiBox Detector Evaluation')
 parser.add_argument('--trained_model',default=None, type=str,
                     help='Trained state_dict file path to open')
-parser.add_argument('--save_folder', default='../../weights/', type=str,
+parser.add_argument('--save_folder', default='eval/', type=str,
                     help='File path to save results')
 parser.add_argument('--confidence_threshold', default=0.01, type=float,
                     help='Detection confidence threshold')
@@ -51,10 +55,12 @@ parser.add_argument('--voc_root', default=VOC_ROOT,
                     help='Location of VOC root directory')
 parser.add_argument('--cleanup', default=True, type=str2bool,
                     help='Cleanup and remove results files following eval')
+parser.add_argument('--log_dir', default='./experiments/models/ssd_voc', type=str,  
+                    help='tensorboard log_dir')
 
 args = parser.parse_args()
 
-###########################################
+
 # test with trained_model
 if args.trained_model is None:
     args.trained_model = '../../weights/ssd_voc_loc_w2_0717_120000.pth'
@@ -76,7 +82,7 @@ print ('data_path:', devkit_path, 'test_type:', set_type, 'test_model:', args.tr
         'device_id:', CUDA_VISIBLE_DEVICES)
 
 if not os.path.exists(args.save_folder):
-    print(args.save_folder, "not exsit!!!")
+    os.mkdir(args.save_folder)
 
 if torch.cuda.is_available():
     if args.cuda:
@@ -148,6 +154,7 @@ def write_voc_results_file(all_boxes, dataset):
 
 
 def do_python_eval(output_dir='output', use_07=True):
+    writer = SummaryWriter(log_dir=args.log_dir)
     cachedir = os.path.join(devkit_path, 'annotations_cache')#devkit_path=~/data/VOCdevkit/VOC2007/
     aps = []
     # The PASCAL VOC metric changed in 2010
@@ -164,6 +171,9 @@ def do_python_eval(output_dir='output', use_07=True):
         print('AP for {} = {:.4f}'.format(cls, ap))
         with open(os.path.join(output_dir, cls + '_pr.pkl'), 'wb') as f:
             pickle.dump({'rec': rec, 'prec': prec, 'ap': ap}, f)
+
+        viz_pr_curve_new(writer, cls, prec, rec)
+
     print('Mean AP = {:.4f}'.format(np.mean(aps)))
     print('~~~~~~~~')
     print('Results:')
@@ -212,10 +222,19 @@ def voc_ap(rec, prec, use_07_metric=True):  ###???
     return ap
 
 
-def voc_eval(detpath, annopath, imagesetfile,
-             classname, cachedir, ovthresh=0.5,
+def voc_eval(detpath,
+             annopath,
+             imagesetfile,
+             classname,
+             cachedir,
+             ovthresh=0.5,
              use_07_metric=True):
-    """
+    """rec, prec, ap = voc_eval(detpath,
+                           annopath,
+                           imagesetfile,
+                           classname,
+                           [ovthresh],
+                           [use_07_metric])
 Top level function that does the PASCAL VOC evaluation.
 detpath: Path to detections
    detpath.format(classname) should produce the detection results file.
@@ -362,9 +381,7 @@ def test_net(save_folder, net, cuda, dataset, transform, top_k,
     det_file = os.path.join(output_dir, 'detections.pkl')
 
     for i in range(num_images):
-        im, gt, h, w, _, _ = dataset.pull_item(i)
-        #print('XXXXX', im)
-        #assert(1==0)
+        im, gt, h, w = dataset.pull_item(i)
 
         x = Variable(im.unsqueeze(0))
         if args.cuda:
@@ -409,17 +426,13 @@ def evaluate_detections(box_list, output_dir, dataset):
 if __name__ == '__main__':
     # load net
     net, layer_dimensions = creat_model(phase='test', cfg=cfg, input_h = 300, input_w = 300)
-    priorbox = PriorBox(cfg)
-    priors = priorbox.forward(layer_dimensions) #<class 'torch.FloatTensor'>???????
-
-    net.priors = Variable(priors, volatile=True)
     net.load_state_dict(torch.load(args.trained_model)['state_dict'])   #model is dict{}
     net.eval()
     print('Finished loading model!')
     # load data
     dataset = VOCDetection(args.voc_root, [('2007', set_type)],
                            BaseTransform(300, dataset_mean),
-                           VOCAnnotationTransform(False))
+                           VOCAnnotationTransform(False)) # TODO extra parameter
     if args.cuda:
         net = net.cuda()
         cudnn.benchmark = True
