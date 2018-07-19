@@ -98,23 +98,3 @@ def test_voc():
 
 if __name__ == '__main__':
     test_voc()
-Traceback (most recent call last):
-  File "train.py", line 56, in <module>
-    args = parser.parse_args()
-  File "/home/maolei/anaconda2/envs/python35/lib/python3.5/argparse.py", line 1729, in parse_args
-    self.error(msg % ' '.join(argv))
-  File "/home/maolei/anaconda2/envs/python35/lib/python3.5/argparse.py", line 2383, in error
-    self.print_usage(_sys.stderr)
-  File "/home/maolei/anaconda2/envs/python35/lib/python3.5/argparse.py", line 2353, in print_usage
-    self._print_message(self.format_usage(), file)
-  File "/home/maolei/anaconda2/envs/python35/lib/python3.5/argparse.py", line 2319, in format_usage
-    return formatter.format_help()
-  File "/home/maolei/anaconda2/envs/python35/lib/python3.5/argparse.py", line 278, in format_help
-    help = self._root_section.format_help()
-  File "/home/maolei/anaconda2/envs/python35/lib/python3.5/argparse.py", line 208, in format_help
-    func(*args)
-  File "/home/maolei/anaconda2/envs/python35/lib/python3.5/argparse.py", line 316, in _format_usage
-    action_usage = format(optionals + positionals, groups)
-  File "/home/maolei/anaconda2/envs/python35/lib/python3.5/argparse.py", line 387, in _format_actions_usage
-    start = actions.index(group._group_actions[0])
-IndexError: list index out of range

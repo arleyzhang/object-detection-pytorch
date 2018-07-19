@@ -38,7 +38,7 @@ parser.add_argument('--resume', default=None, type=str, #####################res
                     help='Checkpoint state_dict file to resume training from')
 parser.add_argument('--start_iter', default=0, type=int,
                     help='Resume training at this iter')
-parser.add_argument('--num_workers', default=4, type=int,
+parser.add_argument('--num_workers', default=12, type=int,
                     help='Number of workers used in dataloading')
 parser.add_argument('--cuda', default=True, type=str2bool,
                     help='Use CUDA to train model')
@@ -58,17 +58,20 @@ parser.add_argument('--save_folder', default='weights/',  ################ snaps
                     help='Directory for saving checkpoint models')
 parser.add_argument('--loss_type', default='ssd_loss', type=str,    ########## loss type
                     help='ssd_loss or repul_loss')
-parser.add_argument('--log_dir', default='./experiments/models/ssd_voc', type=str,  
+parser.add_argument('--log_dir', default='./experiments/models/ssd_voc', type=str,
                     help='tensorboard log_dir')
 args = parser.parse_args()
 
 ###################################################  some configs need to update
-snapshot_prefix = 'ssd_VOC_180625_'
+# snapshot_prefix = 'ssd_VOC_180718_'
+snapshot_prefix = 'ssd_VOC_debug_'
 step_index = 0  #need put in args ???
+
 #args.resume = '../../weights/ssd_VOC_180625_45000.pth'
 # args.start_iter = 45000
     
-CUDA_VISIBLE_DEVICES="6,5,4,3"              #############Specified GPUs range
+# CUDA_VISIBLE_DEVICES = "6,5,4,3"              #############Specified GPUs range
+CUDA_VISIBLE_DEVICES = "0,1"              #############Specified GPUs range
 os.environ["CUDA_VISIBLE_DEVICES"] = CUDA_VISIBLE_DEVICES
 
 if torch.cuda.is_available():
@@ -128,7 +131,7 @@ def train():
 
     if args.cuda:
         net = torch.nn.DataParallel(ssd_net)    #device_ids=[0,1,2,3]
-        cudnn.benchmark = True
+        cudnn.benchmark = False
 
     if args.resume:
         print('Resuming training, loading {}...'.format(args.resume))

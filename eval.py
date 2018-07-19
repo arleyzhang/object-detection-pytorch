@@ -64,16 +64,17 @@ args = parser.parse_args()
 ###########################################
 # test with trained_model
 if args.trained_model is None:
-    args.trained_model = '../../weights/ssd_VOC_180625_119999.pth'
+    args.trained_model = './weights/ssd_VOC_180718_120000.pth'
+
 
 #Annotations for crownd #Annotations_src for normal voc
-annopath = os.path.join(args.voc_root, 'VOC2007', 'Annotations_src', '%s.xml')
+annopath = os.path.join(args.voc_root, 'VOC2007', 'Annotations', '%s.xml')
 imgpath = os.path.join(args.voc_root, 'VOC2007', 'JPEGImages', '%s.jpg')
 imgsetpath = os.path.join(args.voc_root, 'VOC2007', 'ImageSets', 'Main', '{:s}.txt')
 YEAR = '2007'
 devkit_path = args.voc_root + 'VOC' + YEAR
 dataset_mean = (104, 117, 123)
-set_type = 'test_full' #test_full   #test_crowd
+set_type = 'test' #test_full   #test_crowd
 
 CUDA_VISIBLE_DEVICES="6"        #####################Specified GPUs range
 os.environ["CUDA_VISIBLE_DEVICES"] = CUDA_VISIBLE_DEVICES
