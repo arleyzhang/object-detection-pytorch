@@ -2,7 +2,7 @@ import torch
 import cv2
 import numpy as np
 import math
-from itertools import product as product
+
 
 def images_to_writer(writer, images, prefix='image', names='image', epoch=0):
     if isinstance(names, str):
@@ -62,6 +62,7 @@ def viz_feature_maps(writer, feature_maps, module_name='base', epoch=0, prefix='
 
     images_to_writer(writer, feature_map_heatmap, prefix, names, epoch)
 
+
 def viz_grads(writer, model, feature_maps, target_image, target_mean, module_name='base', epoch=0, prefix='module_grads'):
     grads_visualization = []
     names = []
@@ -78,6 +79,7 @@ def viz_grads(writer, model, feature_maps, target_image, target_mean, module_nam
         names.append('{}.{}'.format(module_name, i))
     
     images_to_writer(writer, grads_visualization, prefix, names, epoch)
+
 
 def viz_module_feature_maps(writer, module, input_image, module_name='base', epoch=0, mode='one', prefix='module_feature_maps'):
     output_image = input_image
@@ -266,3 +268,5 @@ def viz_archor_strategy(writer, sizes, labels, epoch=0):
     matched_y = np.clip( matched_y[::-1]/len(aspect_ratio), 1e-8, 1.0)
     add_pr_curve_raw(
         writer=writer, tag='archor_strategy/aspect_ratio_distribute_matched', precision = matched_y/gt_y, recall = x_axis, epoch = epoch )
+
+
