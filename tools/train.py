@@ -110,6 +110,11 @@ if not os.path.exists(args.save_folder):    #snapshot and save_model
 def train():
     global step_index, iteration, match_priors
 
+    ssd_net, layer_dimensions = creat_model('train', cfg)
+    priorbox = PriorBox(cfg)
+    priors = priorbox.forward(layer_dimensions)
+    ssd_net.priors = Variable(priors, volatile=True)
+
     if args.dataset == 'COCO':
         if args.dataset_root == VOC_ROOT:
              args.dataset_root = COCO_ROOT
@@ -164,7 +169,6 @@ def train():
     optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=args.momentum,
                           weight_decay=args.weight_decay)
     
-loss type
     if args.loss_type == 'repul_loss':
         criterion = MultiBoxLoss(cfg['num_classes'], 0.5, True, 0, True, 3, 0.5,
                                 False, args.cuda)
@@ -332,7 +336,7 @@ loss type
                     (timers['eval_time'].diff, timers['eval_time'].average_time))
                 net.train()
             	if args.tensorboard:
-		            # log for tensorboard
+		            # vis for tensorboard
 		            writer.add_scalar('Train/loc_loss', loss_l.data[0], iteration)
 		            writer.add_scalar('Train/conf_loss', loss_c.data[0], iteration)
 

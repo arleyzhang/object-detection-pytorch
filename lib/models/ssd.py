@@ -32,8 +32,8 @@ class SSD(nn.Module):
         self.phase = phase
         self.num_classes = cfg['num_classes']
         self.cfg = cfg
-        self.priorbox = PriorBox(self.cfg)
-        self.priors = Variable(self.priorbox.forward(), volatile=True)
+        # self.priorbox = PriorBox(self.cfg)
+        self.priors = None
         self.size = size
 
         # SSD network

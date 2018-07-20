@@ -110,64 +110,6 @@ def viz_module_grads(writer, model, module, input_image, target_image, target_me
     
     return output_image
 
-def viz_prior_box(writer, prior_box, image=None, epoch=0):  
-    if isinstance(image, type(None)):
-        image = np.random.random((prior_box.image_size, prior_box.image_size, 3))
-    elif isinstance(image, str):
-        image = cv2.imread(image, -1)
-    image = cv2.resize(image, (prior_box.image_size, prior_box.image_size))
-    
-    for k, f in enumerate(prior_box.feature_maps):
-        bbxs = []
-        image_show = image.copy()
-        for i, j in product(range(f), repeat=2):
-            # cx = j * prior_box.steps[k] + prior_box.offset[k]
-            # cy = i * prior_box.steps[k] + prior_box.offset[k]
-
-            # # aspect_ratio: 1 Min size
-            # s_k = prior_box.scales[k]
-            # bbxs += [cx, cy, s_k, s_k]
-
-            f_k = prior_box.image_size / prior_box.steps[k]
-            # unit center x,y
-            cx = (j + 0.5) / f_k
-            cy = (i + 0.5) / f_k
-
-            if isinstance(prior_box.min_sizes[k], list):
-                for m in range(len(prior_box.min_sizes[k])):
-                    # aspect_ratio: 1
-                    # rel size: min_size
-                    s_k = prior_box.min_sizes[k][m]/prior_box.image_size
-                    bbxs += [cx, cy, s_k, s_k]
-            else:
-                s_k = prior_box.min_sizes[k]/prior_box.image_size
-                bbxs += [cx, cy, s_k, s_k]
-
-            # # aspect_ratio: 1 Max size
-            # # rel size: sqrt(s_k * s_(k+1))
-            # s_k_prime = sqrt(s_k * self.scales[k+1])
-            # bbxs += [cx, cy, s_k_prime, s_k_prime]
-
-            # # rest of aspect ratios
-            # for ar in self.aspect_ratios[k]:
-            #     ar_sqrt = sqrt(ar)
-            #     bbxs += [cx, cy, s_k*ar_sqrt, s_k/ar_sqrt]
-            #     bbxs += [cx, cy, s_k/ar_sqrt, s_k*ar_sqrt]
-
-        scale = [prior_box.image_size, prior_box.image_size, prior_box.image_size, prior_box.image_size]
-        bbxs = np.array(bbxs).reshape((-1, 4))
-        archors = bbxs[:, :2] * scale[:2]
-        bbxs = np.hstack((bbxs[:, :2] - bbxs[:, 2:4]/2, bbxs[:, :2] + bbxs[:, 2:4]/2)) * scale
-        archors = archors.astype(np.int32)
-        bbxs = bbxs.astype(np.int32)
-
-        for archor, bbx in zip(archors, bbxs):
-            cv2.circle(image_show,(archor[0],archor[1]), 2, (0,0,255), -1)
-            if archor[0] == archor[1]:
-                cv2.rectangle(image_show, (bbx[0], bbx[1]), (bbx[2], bbx[3]), (0, 255, 0), 1)
-        image_show = image_show[...,::-1]
-        writer.add_image('example_prior_boxs/feature_map_{}'.format(k), image_show, epoch)
-
 
 # def add_pr_curve_raw(writer, tag, precision, recall, epoch=0):
 #     num_thresholds = len(precision)
