@@ -14,7 +14,7 @@ import torch.utils.data as data
 from data import COCODetection, COCOAnnotationTransform, COCO_CLASSES, COCO_ROOT, BaseTransform, get_label_map
 from data import COCO_CLASSES as labelmap
 from data.config import *
-from models.model_build import creat_model
+from models.model_build import create_model
 from utils import *
 from layers import *
 
@@ -389,7 +389,7 @@ def evaluate_detections(box_list, output_dir, dataset):
 
 if __name__ == '__main__':
     # load net
-    net, layer_dimensions = creat_model(phase='test', cfg=cfg, input_h = 300, input_w = 300)
+    net, layer_dimensions = create_model(phase='test', cfg=cfg, input_h = 300, input_w = 300)
     priorbox = PriorBox(cfg)
     priors = priorbox.forward(layer_dimensions) #<class 'torch.FloatTensor'>???????
 

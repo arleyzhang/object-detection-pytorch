@@ -83,14 +83,14 @@ class PriorBoxBase(object):
             image = image[..., ::-1]
             writer.add_image('base/feature_map_{}_{}'.format(feat_idx, prior_idx), image, 2)
 
-    def forward(self, feat_dim, writer=None, image=None):
+    def forward(self, layer_dims, writer=None, image=None):
         self.writer = writer
         priors = []
         image = self.image_proc(image=image, writer=writer)
 
-        for k in range(len(feat_dim)):
+        for k in range(len(layer_dims)):
             prior = []
-            for i, j in product(range(feat_dim[k][0]), range(feat_dim[k][1])):
+            for i, j in product(range(layer_dims[k][0]), range(layer_dims[k][1])):
                 steps_x = self.image_size[1] / self.steps[k]
                 steps_y = self.image_size[0] / self.steps[k]
                 cx = (j + 0.5) / steps_x  # unit center x,y
@@ -106,12 +106,12 @@ class PriorBoxBase(object):
         return output
 
 
-class PriorBoxOrigin(PriorBoxBase):
+class PriorBoxSSD(PriorBoxBase):
     def __init__(self, cfg):
-        super(PriorBoxOrigin, self).__init__(cfg)
+        super(PriorBoxSSD, self).__init__(cfg)
         # self.image_size = cfg['image_size']
         self.cfg_list = ['min_sizes', 'max_sizes', 'aspect_ratios']
-        self.flip = cfg['flip'] if 'flip' in cfg else True
+        self.flip = cfg['flip'] if 'flip' in cfg else True  # backward compatibility
         self.setup(cfg)
 
     def create_prior(self, cx, cy, k):
@@ -138,7 +138,7 @@ class PriorBoxOrigin(PriorBoxBase):
         return prior
 
 
-PriorBox = PriorBoxOrigin
+PriorBox = PriorBoxSSD
 
 
 def test_no_vis(cfg, writer):
@@ -147,7 +147,7 @@ def test_no_vis(cfg, writer):
     cfg['min_sizes'] = [[30], [60], 111, 162, 213, 264]
     cfg['flip'] = True
     feat_dim = [list(a) for a in zip(cfg['feature_maps'], cfg['feature_maps'])]
-    p = PriorBoxOrigin(cfg)
+    p = PriorBoxSSD(cfg)
     print(p.num_priors)
     p1 = p.forward(feat_dim)
     print(p1)
@@ -158,7 +158,7 @@ def test_filp(cfg, writer):
     cfg['feature_maps'] = [38, 19, 10, 5, 3, 1]
     cfg['flip'] = True
     feat_dim = [list(a) for a in zip(cfg['feature_maps'], cfg['feature_maps'])]
-    p = PriorBoxOrigin(cfg)
+    p = PriorBoxSSD(cfg)
     p1 = p.forward(feat_dim, writer=writer)
 
     cfg['flip'] = False
@@ -181,7 +181,7 @@ def test_rectangle(cfg, writer):
     # cfg['image_size'] = [300, 600]
     feat_dim = [list(a) for a in zip([item * 2 for item in cfg['feature_maps']], cfg['feature_maps'])]
     cfg['image_size'] = [600, 300]
-    p = PriorBoxOrigin(cfg)
+    p = PriorBoxSSD(cfg)
     p1 = p.forward(feat_dim, writer=writer)
     print(p1.shape)
 

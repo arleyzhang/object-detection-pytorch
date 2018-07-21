@@ -14,7 +14,7 @@ import torch.utils.data as data
 from data import VOC_ROOT, VOCAnnotationTransform, VOCDetection, BaseTransform
 from data import VOC_CLASSES as labelmap
 from data.config import *
-from models.model_build import creat_model
+from models.model_build import create_model
 from utils import *
 from layers import *
 
@@ -425,7 +425,7 @@ def evaluate_detections(box_list, output_dir, dataset):
 
 if __name__ == '__main__':
     # load net
-    net, layer_dimensions = creat_model(phase='test', cfg=cfg, input_h = 300, input_w = 300)
+    net, layer_dimensions = create_model(phase='test', cfg=cfg, input_h = 300, input_w = 300)
     net.load_state_dict(torch.load(args.trained_model)['state_dict'])   #model is dict{}
     net.eval()
     print('Finished loading model!')

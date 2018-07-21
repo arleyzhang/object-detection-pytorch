@@ -3,7 +3,7 @@ from data import *
 from layers.modules import MultiBoxLoss, MultiBoxLossSSD
 
 from utils import * #EvalSolver, Timer, SSDAugmentation
-from models.model_build import creat_model
+from models.model_build import create_model
 
 import os
 import sys
@@ -110,7 +110,7 @@ if not os.path.exists(args.save_folder):    #snapshot and save_model
 def train():
     global step_index, iteration, match_priors
 
-    ssd_net, layer_dimensions = creat_model('train', cfg)
+    ssd_net, layer_dimensions = create_model('train', cfg)
     priorbox = PriorBox(cfg)
     priors = priorbox.forward(layer_dimensions)
     ssd_net.priors = Variable(priors, volatile=True)

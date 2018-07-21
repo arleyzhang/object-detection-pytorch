@@ -11,7 +11,7 @@ import torch.utils.data as data
 from data import VOC_ROOT, VOCAnnotationTransform, VOCDetection, BaseTransform
 from data import VOC_CLASSES as labelmap
 from data.config import *
-from models.model_build import creat_model
+from models.model_build import create_model
 from utils import *
 from layers import *
 
@@ -77,7 +77,7 @@ if __name__ == '__main__':
         input_w *= 2
         cfg['image_size'] = [input_h, input_w]
     # load net
-    net, layer_dimensions = creat_model(phase='test', cfg=cfg, input_h = input_h, input_w = input_w)
+    net, layer_dimensions = create_model(phase='test', cfg=cfg, input_h = input_h, input_w = input_w)
     priorbox = PriorBox(cfg)
     priors = priorbox.forward(layer_dimensions) #<class 'torch.FloatTensor'>???????
 

@@ -1,13 +1,8 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.autograd import Variable
-from layers import *
-from models import *
-from utils import Timer
-import os
+from lib.layers import *
 
-import time
 
 class SSD(nn.Module):
     """Single Shot Multibox Architecture
@@ -27,26 +22,25 @@ class SSD(nn.Module):
         head: "multibox head" consists of loc and conf conv layers
     """
 
-    def __init__(self, phase, size, base, extras, head, cfg):
+    def __init__(self, phase, cfg, base, extras, head):
         super(SSD, self).__init__()
         self.phase = phase
         self.num_classes = cfg['num_classes']
         self.cfg = cfg
-        # self.priorbox = PriorBox(self.cfg)
         self.priors = None
-        self.size = size
+        self.image_size = cfg['image_size']
 
         # SSD network
         self.vgg = nn.ModuleList(base)
         # Layer learns to scale the l2 normalized features from conv4_3
-        self.L2Norm = L2Norm(512, 20)
-        self.extras = nn.ModuleList(extras)
+        self.L2Norm = L2Norm(512, 20)  # TODO automate this
 
+        self.extras = nn.ModuleList(extras)
         self.loc = nn.ModuleList(head[0])
         self.conf = nn.ModuleList(head[1])
 
         self.softmax = nn.Softmax(dim=-1)
-        if self.phase == 'test':
+        if self.phase == 'test':  # TODO add to config
             self.detect = Detect(self.num_classes, 0, 200, 0.01, 0.45)
 
     def forward(self, x, phase='train'):
@@ -73,10 +67,10 @@ class SSD(nn.Module):
         conf = list()
 
         # apply vgg up to conv4_3 relu
-        for k in range(23):
+        for k in range(23):  # TODO make it configurable
             x = self.vgg[k](x)
 
-        s = self.L2Norm(x)  #can replace batchnorm    nn.BatchNorm2d(x)#
+        s = self.L2Norm(x)  # can replace batchnorm    nn.BatchNorm2d(x)#
         sources.append(s)
 
         # apply vgg up to fc7
@@ -97,46 +91,27 @@ class SSD(nn.Module):
 
         loc = torch.cat([o.view(o.size(0), -1) for o in loc], 1)
         conf = torch.cat([o.view(o.size(0), -1) for o in conf], 1)
-        if self.phase == "test":
-            #timer = Timer()
-            #timer.tic()
-            if self.priors is None:
-                print('Test net init success!')
-                return 0
-            output = self.detect(
-                loc.view(loc.size(0), -1, 4),                   # loc preds
-                self.softmax(conf.view(conf.size(0), -1,
-                             self.num_classes)),                # conf preds
-                self.priors.type(type(x.data))                  # default boxes
-            )
-            #timer.toc()
-            #print("test detect time----", timer.diff)
-        elif phase == 'eval':
-            output = (
-                loc.view(loc.size(0), -1, 4),                   # loc preds
-                self.softmax(conf.view(conf.size(0), -1,
-                             self.num_classes)),                # conf preds
-                                                        # priors Shape: [2,num_priors,4] ????
-            )
-            #print("eval----", self.priors.size())
+        loc = loc.view(loc.size(0), -1, 4)
+        conf = conf.view(conf.size(0), -1, self.num_classes)
+
+        if phase == 'eval':
+            # TODO add detect method there
+            output = (loc, self.softmax(conf), self.priors)
         else:
-            output = (
-                loc.view(loc.size(0), -1, 4),
-                conf.view(conf.size(0), -1, self.num_classes),
-                self.priors
-            )
+            output = (loc, conf, self.priors)
         return output
 
-def add_extras(cfg, i, batch_norm=False):
+
+def add_extras(cfg, base, batch_norm=False):
     # Extra layers added to VGG for feature scaling
     layers = []
-    in_channels = i
+    in_channels = base[-2].out_channels  # TODO make this configurable
     flag = False
     for k, v in enumerate(cfg):
         if in_channels != 'S':
             if v == 'S':
                 layers += [nn.Conv2d(in_channels, cfg[k + 1],
-                           kernel_size=(1, 3)[flag], stride=2, padding=1)]
+                                     kernel_size=(1, 3)[flag], stride=2, padding=1)]
             else:
                 layers += [nn.Conv2d(in_channels, v, kernel_size=(1, 3)[flag])]
             flag = not flag
@@ -144,66 +119,31 @@ def add_extras(cfg, i, batch_norm=False):
     return layers
 
 
-def multibox(base, extra_layers, cfg, num_classes):
+def multibox(base, extra_layers, num_priors, num_classes):
     loc_layers = []
     conf_layers = []
     vgg_source = [21, -2]
     for k, v in enumerate(vgg_source):
         loc_layers += [nn.Conv2d(base[v].out_channels,
-                                 cfg[k] * 4, kernel_size=3, padding=1)]
+                                 num_priors[k] * 4, kernel_size=3, padding=1)]
         conf_layers += [nn.Conv2d(base[v].out_channels,
-                        cfg[k] * num_classes, kernel_size=3, padding=1)]
-    for k, v in enumerate(extra_layers[1::2], 2):#k start from 2
-        loc_layers += [nn.Conv2d(v.out_channels, cfg[k]
+                                  num_priors[k] * num_classes, kernel_size=3, padding=1)]
+    for k, v in enumerate(extra_layers[1::2], 2):  # k start from 2
+        loc_layers += [nn.Conv2d(v.out_channels, num_priors[k]
                                  * 4, kernel_size=3, padding=1)]
-        conf_layers += [nn.Conv2d(v.out_channels, cfg[k]
+        conf_layers += [nn.Conv2d(v.out_channels, num_priors[k]
                                   * num_classes, kernel_size=3, padding=1)]
-    return base, extra_layers, (loc_layers, conf_layers)
+    return loc_layers, conf_layers
 
 
-# base = {
-#     '300': [64, 64, 'M', 128, 128, 'M', 256, 256, 256, 'C', 512, 512, 512, 'M',
-#             512, 512, 512],
-#     '512': [],
-# }
-extras = {
-    '300': [256, 'S', 512, 128, 'S', 256, 128, 256, 128, 256],
-    '512': [],
+extras_config = {
+    'ssd': [256, 'S', 512, 128, 'S', 256, 128, 256, 128, 256],
 }
-# mbox = {
-#     '300': [4, 6, 6, 6, 4, 4],  # number of boxes per feature map location
-#     '512': [],
-# }
 
 
-def build_ssd(phase, cfg):
-    size = cfg['min_dim']
-    num_classes = cfg['num_classes']
-    min_sizes = cfg['min_sizes']
-    max_sizes = cfg['max_sizes']
-    aspect_ratios = cfg['aspect_ratios']
-    flip = cfg['flip']
-    mbox = [0]*len(min_sizes)
-    for i in range(len(min_sizes)):
-        min_size = min_sizes[i]
-        if type(min_size) is not list:
-            min_size = [min_size]
-        mbox[i] = len(min_size) + len(aspect_ratios[i]) * len(min_size)
-        if len(max_sizes) > 0:
-            mbox[i] += len(min_size)
-        if flip:
-            mbox[i] += len(aspect_ratios[i]) * len(min_size)
-    print("number of boxes per feature map location:", mbox)
-
-    if phase != "test" and phase != "train":
-        print("ERROR: Phase: " + phase + " not recognized")
-        return
-    if size != 300:
-        print("ERROR: You specified size " + repr(size) + ". However, " +
-              "currently only SSD300 (size=300) is supported!")
-        return
-    base_ = base()
-    base_, extras_, head_ = multibox(base_,
-                                     add_extras(extras[str(size)], 1024),
-                                     mbox, num_classes)
-    return SSD(phase, size, base_, extras_, head_, cfg)
+def build(phase, cfg, base):
+    if phase != "train" and phase != "eval":
+        raise Exception("ERROR: Input phase: {} not recognized".format(phase))
+    extras = add_extras(extras_config['ssd'], base)
+    head = multibox(base, extras, cfg['num_priors'], cfg['num_classes'])
+    return SSD(phase, head, cfg['image_size'], base, extras)

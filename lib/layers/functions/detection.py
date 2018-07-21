@@ -1,8 +1,8 @@
 import torch
 from torch.autograd import Function
-from torch.autograd import Variable
 from ..box_utils import decode, nms
 from data import VARIANCE
+
 
 class Detect(Function):
     """At test time, Detect is the final layer of SSD.  Decode location preds,
@@ -10,6 +10,7 @@ class Detect(Function):
     scores and threshold to a top_k number of output predictions for both
     confidence score and locations.
     """
+
     def __init__(self, num_classes, bkg_label, top_k, conf_thresh, nms_thresh):
         self.num_classes = num_classes
         self.background_label = bkg_label
@@ -39,8 +40,8 @@ class Detect(Function):
 
         # Decode predictions into bboxes.
         for i in range(num):
-            #print('debug locate------', i, '\n', loc_data[i][-1], '\n', prior_data[-1])
-            decoded_boxes = decode(loc_data[i], prior_data, self.variance)   #
+            # print('debug locate------', i, '\n', loc_data[i][-1], '\n', prior_data[-1])
+            decoded_boxes = decode(loc_data[i], prior_data, self.variance)  #
             # For each class, perform nms
             conf_scores = conf_preds[i].clone()
 
