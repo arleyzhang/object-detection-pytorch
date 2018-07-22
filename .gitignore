@@ -134,6 +134,16 @@ coco300_35k/
 ssd300_120000/
 eval/
 
+# for .files
+*DS_Store*
+*.log
+*.pyc
+*.pkl
+read*.py
+._coco300_35k
+####### end lei
+
+# ----by Sun Zhicheng----
 # files enough for reimplementation
 jobs/
 
@@ -143,11 +153,5 @@ results/
 # log dir for tensorboard
 logs/
 
-# for .files
-*DS_Store*
-*.log
-*.pyc
-*.pkl
-read*.py
-._coco300_35k
-####### end lei
+# cache dir
+cache/

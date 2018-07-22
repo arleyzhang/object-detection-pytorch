@@ -5,7 +5,7 @@ import cv2
 import numpy as np
 import types
 from numpy import random
-
+import collections
 
 def intersect(box_a, box_b):
     max_xy = np.minimum(box_a[:, 2:], box_b[2:])
@@ -48,9 +48,15 @@ class Compose(object):
     def __init__(self, transforms):
         self.transforms = transforms
 
-    def __call__(self, img, boxes=None, labels=None):
-        for t in self.transforms:
+    def __call__(self, img, boxes=None, labels=None, tb_writer=None):
+        if tb_writer is not None:
+            tb_writer.cfg['aug_name'] = '0_input'
+            vis_aug(img, boxes, labels, tb_writer)
+        for i, t in enumerate(self.transforms):
             img, boxes, labels = t(img, boxes, labels)
+            if tb_writer is not None and i + 1 in tb_writer.cfg['vis_list']:
+                tb_writer.cfg['aug_name'] = '{}_{}'.format(i + 1, type(t).__name__)
+                vis_aug(img, boxes, labels, tb_writer)
         return img, boxes, labels
 
 
@@ -103,12 +109,13 @@ class ToPercentCoords(object):
 
 
 class Resize(object):
-    def __init__(self, size=300):
+    def __init__(self, size=(300, 300)):
+        """size: height width"""
         self.size = size
 
     def __call__(self, image, boxes=None, labels=None):
-        image = cv2.resize(image, (self.size,
-                                   self.size))
+        image = cv2.resize(image, (self.size[1],
+                                   self.size[0]))
         return image, boxes, labels
 
 
@@ -220,6 +227,7 @@ class RandomSampleCrop(object):
             labels (Tensor): the class labels for each bbox
     """
 
+    # TODO make this configurable
     def __init__(self):
         self.sample_options = (
             # using entire original input image
@@ -235,80 +243,79 @@ class RandomSampleCrop(object):
 
     def __call__(self, image, boxes=None, labels=None):
         height, width, _ = image.shape
-        while True:
-            # randomly choose a mode
-            mode = random.choice(self.sample_options)
-            if mode is None:
-                return image, boxes, labels
+        # randomly choose a mode
+        mode = random.choice(self.sample_options)
+        if mode is None or boxes is None:
+            return image, boxes, labels
 
-            min_iou, max_iou = mode
-            if min_iou is None:
-                min_iou = float('-inf')
-            if max_iou is None:
-                max_iou = float('inf')
+        min_iou, max_iou = mode
+        if min_iou is None:
+            min_iou = float('-inf')
+        if max_iou is None:
+            max_iou = float('inf')
 
-            # max trails (50)
-            for _ in range(50):
-                current_image = image
+        # max trails (50)
+        for _ in range(50):
+            current_image = image
 
-                w = random.uniform(0.3 * width, width)
-                h = random.uniform(0.3 * height, height)
+            w = random.uniform(0.3 * width, width)
+            h = random.uniform(0.3 * height, height)
 
-                # aspect ratio constraint b/t .5 & 2
-                if h / w < 0.5 or h / w > 2:
-                    continue
+            # aspect ratio constraint b/t .5 & 2
+            if h / w < 0.5 or h / w > 2:
+                continue
 
-                left = random.uniform(width - w)
-                top = random.uniform(height - h)
+            left = random.uniform(width - w)
+            top = random.uniform(height - h)
 
-                # convert to integer rect x1,y1,x2,y2
-                rect = np.array([int(left), int(top), int(left + w), int(top + h)])
+            # convert to integer rect x1,y1,x2,y2
+            rect = np.array([int(left), int(top), int(left + w), int(top + h)])
 
-                # calculate IoU (jaccard overlap) b/t the cropped and gt boxes
-                overlap = jaccard_numpy(boxes, rect)
+            # calculate IoU (jaccard overlap) b/t the cropped and gt boxes
+            overlap = jaccard_numpy(boxes, rect)
 
-                # is min and max overlap constraint satisfied? if not try again
-                if overlap.min() < min_iou and max_iou < overlap.max():
-                    continue
+            # is min and max overlap constraint satisfied? if not try again
+            if overlap.min() < min_iou and max_iou < overlap.max():
+                continue
 
-                # cut the crop from the image
-                current_image = current_image[rect[1]:rect[3], rect[0]:rect[2],
-                                :]
+            # cut the crop from the image
+            current_image = current_image[rect[1]:rect[3], rect[0]:rect[2], :]
 
-                # keep overlap with gt box IF center in sampled patch
-                centers = (boxes[:, :2] + boxes[:, 2:]) / 2.0
+            # keep overlap with gt box IF center in sampled patch
+            centers = (boxes[:, :2] + boxes[:, 2:]) / 2.0
 
-                # mask in all gt boxes that above and to the left of centers
-                m1 = (rect[0] < centers[:, 0]) * (rect[1] < centers[:, 1])
+            # mask in all gt boxes that above and to the left of centers
+            m1 = (rect[0] < centers[:, 0]) * (rect[1] < centers[:, 1])
 
-                # mask in all gt boxes that under and to the right of centers
-                m2 = (rect[2] > centers[:, 0]) * (rect[3] > centers[:, 1])
+            # mask in all gt boxes that under and to the right of centers
+            m2 = (rect[2] > centers[:, 0]) * (rect[3] > centers[:, 1])
 
-                # mask in that both m1 and m2 are true
-                mask = m1 * m2
+            # mask in that both m1 and m2 are true
+            mask = m1 * m2
 
-                # have any valid boxes? try again if not
-                if not mask.any():
-                    continue
+            # have any valid boxes? try again if not
+            if not mask.any():
+                continue
 
-                # take only matching gt boxes
-                current_boxes = boxes[mask, :].copy()
+            # take only matching gt boxes
+            current_boxes = boxes[mask, :].copy()
 
-                # take only matching gt labels
-                current_labels = labels[mask]
+            # take only matching gt labels
+            current_labels = labels[mask]
 
-                # should we use the box left and top corner or the crop's
-                current_boxes[:, :2] = np.maximum(current_boxes[:, :2],
-                                                  rect[:2])
-                # adjust to crop (by substracting crop's left,top)
-                current_boxes[:, :2] -= rect[:2]
+            # should we use the box left and top corner or the crop's
+            current_boxes[:, :2] = np.maximum(current_boxes[:, :2], rect[:2])
+            # adjust to crop (by substracting crop's left,top)
+            current_boxes[:, :2] -= rect[:2]
 
-                current_boxes[:, 2:] = np.minimum(current_boxes[:, 2:],
-                                                  rect[2:])
-                # adjust to crop (by substracting crop's left,top)
-                current_boxes[:, 2:] -= rect[:2]
+            current_boxes[:, 2:] = np.minimum(current_boxes[:, 2:], rect[2:])
+            # adjust to crop (by substracting crop's left,top)
+            current_boxes[:, 2:] -= rect[:2]
 
-                return current_image, current_boxes, current_labels
+            return current_image, current_boxes, current_labels
+
+        # if none of the trails succeed
+        return image, boxes, labels
 
 
 class Expand(object):
@@ -363,14 +370,10 @@ class SwapChannels(object):
     def __call__(self, image):
         """
         Args:
-            image (Tensor): image tensor to be transformed
+            image (numpy): image tensor to be transformed
         Return:
             a tensor with channels swapped according to swap
         """
-        # if torch.is_tensor(image):
-        #     image = image.data.cpu().numpy()
-        # else:
-        #     image = np.array(image)
         image = image[:, :, self.swaps]
         return image
 
@@ -399,11 +402,10 @@ class PhotometricDistort(object):
         return self.rand_light_noise(im, boxes, labels)
 
 
-def draw_bbox(image, bbxs, color=(0, 255, 0)):
+def draw_bbox(image, bbxs, color=(255, 255, 0)):
     img = image.copy()
     bboxes = bbxs.copy()
-    # bbxs = np.array(bbxs).astype(np.int32)
-    for bbx in bboxes:
+    for bbx in bboxes:  # coordinates shift in the aug process
         if bbx[2] <= 1:
             bbx[0] *= img.shape[1]
             bbx[1] *= img.shape[0]
@@ -411,28 +413,24 @@ def draw_bbox(image, bbxs, color=(0, 255, 0)):
             bbx[3] *= img.shape[0]
         bbx = bbx.astype(np.int32)
         cv2.rectangle(img, (bbx[0], bbx[1]), (bbx[2], bbx[3]), color, 5)
-    # img = img[...,::-1]
     return img
 
 
-class WriteImage(object):
-    def __init__(self, writer=None, epoch=0, augname=''):
-        self.writer = writer
-        self.epoch = epoch
-        self.augname = augname
-
-    def __call__(self, img, boxes, labels):
-        image_show = draw_bbox(img, boxes)
-        # image_show = img.copy()
-        cv2.imwrite('demo/temp.jpg', image_show)
-        image_show = cv2.imread('demo/temp.jpg')
-        image_show = image_show[..., ::-1]
-        self.writer.add_image('preprocess/%s' % self.augname, image_show, self.epoch)
-        return img, boxes, labels
+def vis_aug(img, boxes, labels, tb_writer):
+    image = draw_bbox(img, boxes)
+    cv2.imwrite('demo/temp.jpg', image)
+    image = cv2.imread('demo/temp.jpg')
+    image = image[..., ::-1]  # to rgb
+    tb_writer.writer.add_image('preprocess/%s' % tb_writer.cfg['aug_name'],
+                               image, tb_writer.cfg['steps'])
+    return img, boxes, labels
 
 
 class SSDAugmentation(object):
-    def __init__(self, size=300, mean=(104, 117, 123), writer=None):
+    def __init__(self, size=(300, 300), mean=(104, 117, 123),
+                 use_base=False, writer=None):
+        assert isinstance(size, collections.Sequence)
+        self.use_base = use_base  # for eval mode
         self.mean = mean
         self.size = size
         self.writer = writer
@@ -453,40 +451,8 @@ class SSDAugmentation(object):
             SubtractMeans(self.mean)
         ])
 
-    def __call__(self, img, boxes, labels):
-        if self.writer is not None:
-            self.augment = Compose([
-                WriteImage(self.writer, self.epoch, '0_input'),
-                ConvertFromInts(),
-                # WriteImage(self.writer, self.epoch, '1_ConvertFromInts'),
-                ToAbsoluteCoords(),
-                # WriteImage(self.writer, self.epoch, '2_ToAbsoluteCoords'),
-                PhotometricDistort(),
-                WriteImage(self.writer, self.epoch, '3_PhotometricDistort'),
-                Expand(self.mean),
-                WriteImage(self.writer, self.epoch, '4_Expand'),
-                RandomSampleCrop(),
-                WriteImage(self.writer, self.epoch, '5_RandomSampleCrop'),
-                RandomMirror(),
-                WriteImage(self.writer, self.epoch, '6_RandomMirror'),
-                ToPercentCoords(),
-                # WriteImage(self.writer, self.epoch, '7_ToPercentCoords'),
-                Resize(self.size),
-                WriteImage(self.writer, self.epoch, '8_Resize'),
-                SubtractMeans(self.mean),
-                WriteImage(self.writer, self.epoch, '9_SubtractMeans_final')
-            ])
-            out = self.augment(img, boxes, labels)
-            self.release_writer()
-            return out
-        elif boxes is None:
-            return self.base_transform(img, boxes, labels)
+    def __call__(self, img, boxes, labels, tb_writer=None):
+        if self.use_base or boxes is None:
+            return self.base_transform(img, boxes, labels, tb_writer=tb_writer)
         else:
-            return self.augment(img, boxes, labels)
-
-    def add_writer(self, writer, epoch=None):
-        self.writer = writer
-        self.epoch = epoch if epoch is not None else self.epoch + 1
-
-    def release_writer(self):
-        self.writer = None
+            return self.augment(img, boxes, labels, tb_writer=tb_writer)

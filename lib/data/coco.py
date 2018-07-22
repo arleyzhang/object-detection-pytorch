@@ -1,16 +1,14 @@
-from .config import HOME
 import os
 import os.path as osp
 import sys
-import torch
-import torch.utils.data as data
-import torchvision.transforms as transforms
-import cv2
 import numpy as np
 
-import copy
+import torch
+import torch.utils.data as data
+import cv2
 
 from pycocotools.coco import COCO
+from .config import HOME
 
 COCO_ROOT = osp.join(HOME, 'data/coco/')
 IMAGES = 'images'
@@ -51,6 +49,7 @@ class COCOAnnotationTransform(object):
     """Transforms a COCO annotation into a Tensor of bbox coords and label index
     Initilized with a dictionary lookup of classnames to indexes
     """
+
     def __init__(self, is_scale=True):
         self.label_map = get_label_map(osp.join(COCO_ROOT, 'coco_labels.txt'))
         self.is_scale = is_scale
@@ -62,32 +61,31 @@ class COCOAnnotationTransform(object):
             height (int): height
             width (int): width
         Returns:
-            a list containing lists of bounding boxes  [bbox coords, class idx]
+            TODO a list containing lists of bounding boxes  [bbox coords, class idx]
         """
         scale = np.array([width, height, width, height])
         res = []
         for obj in target:
             if 'bbox' in obj:
-                bbox_ = obj['bbox']
-                bbox = [int(bbox_[0]) - 1, int(bbox_[1]) - 1, 
-                        int(bbox_[2] + bbox_[0]) - 1, int(bbox_[3] + bbox_[1]) - 1]
-                
+                bbox_orig = obj['bbox']
+                bbox = [int(bbox_orig[0]) - 1, int(bbox_orig[1]) - 1,
+                        int(bbox_orig[2] + bbox_orig[0]) - 1, int(bbox_orig[3] + bbox_orig[1]) - 1]
+
                 label_idx = self.label_map[obj['category_id']] - 1
                 if self.is_scale:
-                    final_box = list(np.array(bbox) / scale)  #scale to [0, 1]
+                    final_box = list(np.array(bbox) / scale)  # scale to [0, 1]
                 else:
                     final_box = list(np.array(bbox))
                 final_box.append(label_idx)
                 res += [final_box]  # [xmin, ymin, xmax, ymax, label_idx]
             else:
+                # TODO delete it
                 print("no bbox problem!")
 
         return res  # [[xmin, ymin, xmax, ymax, label_idx], ... ]
 
-############################################################
-#  Dataset
-############################################################
 
+# TODO zheli base???
 class Dataset(object):
     """The base class for dataset classes.
     To use it, create a new class that adds functions specific to the dataset
@@ -110,7 +108,7 @@ class Dataset(object):
         self.class_info = [{"source": "", "id": 0, "name": "BG"}]
         self.source_class_ids = {}
 
-    #self.add_class("coco", i, coco.loadCats(i)[0]["name"])
+    # self.add_class("coco", i, coco.loadCats(i)[0]["name"])
     def add_class(self, source, class_id, class_name):
         assert "." not in source, "Source name cannot contain a dot"
         # Does the class exist already?
@@ -120,21 +118,22 @@ class Dataset(object):
                 return
         # Add the class
         self.class_info.append({
-            "source": source,   #data set name
+            "source": source,  # data set name
             "id": class_id,
             "name": class_name,
         })
 
     def add_image(self, source, image_id, path, **kwargs):
         image_info = {
-            "id": image_id, #img id
-            "source": source,   #dataset name, e.g. coco, voc
-            "path": path,   #img path
+            "id": image_id,  # img id
+            "source": source,  # dataset name, e.g. coco, voc
+            "path": path,  # img path
         }
-        image_info.update(kwargs)   #default add (key, value)
+        image_info.update(kwargs)  # default add (key, value)
         self.image_info.append(image_info)
         self._image_ids.append(self.img_cnt)
         self.img_cnt += 1
+
 
 class CocoDataset(Dataset):
     def load_coco(self, dataset_dir, subset, year='2014', class_ids=None,
@@ -161,7 +160,7 @@ class CocoDataset(Dataset):
             class_ids = sorted(coco.getCatIds())
 
         # All images or a subset?
-        if class_ids:       #if not none, only keep these class_ids
+        if class_ids:  # if not none, only keep these class_ids
             image_ids = []
             for id in class_ids:
                 image_ids.extend(list(coco.getImgIds(catIds=[id])))
@@ -185,7 +184,7 @@ class CocoDataset(Dataset):
                 annotations=coco.loadAnns(coco.getAnnIds(
                     imgIds=[i], catIds=class_ids, iscrowd=None)))
 
-#return self.image_info[image_id]["path"]
+
 class COCODetection(data.Dataset):
     """`MS Coco Detection <http://mscoco.org/dataset/#detections-challenge2016>`_ Dataset.
     Args:
@@ -197,65 +196,45 @@ class COCODetection(data.Dataset):
         in the target (bbox) and transforms it.
     """
 
-    def __init__(self, root, image_set=['train','valminusminival'], transform=None,
+    def __init__(self, root, image_set=['train', 'valminusminival'], transform=None,
                  target_transform=COCOAnnotationTransform(), dataset_name='MS COCO'):
         sys.path.append(osp.join(root, COCO_API))
         self.root = root
-        #osp.join(root, IMAGES, image_set)   #jpeg path
-
         self.data_set = CocoDataset()
         for subset in image_set:
             self.data_set.load_coco(root, subset)
 
-        # self.coco = COCO(osp.join(root, ANNOTATIONS,
-        #                           INSTANCES_SET.format(image_set))) #annotation path
         self.ids = self.data_set._image_ids
-        #print('test-----------------------',self.ids[0], self.ids[-1])
-
         self.transform = transform
         self.target_transform = target_transform
         self.name = dataset_name
 
     def __getitem__(self, index):
-        """
-        Args:
-            index (int): Index
-        Returns:
-            tuple: Tuple (image, target).
-                   target is the object returned by ``coco.loadAnns``.
-        """
-        im, gt, h, w, loc_t, conf_t = self.pull_item(index)
-        return im, gt, h, w, -1 ,-1
+        im, gt, h, w = self.pull_item(index)
+        return im, gt
 
     def __len__(self):
         return len(self.ids)
 
     def pull_item(self, index):
-        """
-        Args:
-            index (int): Index
-        Returns:
-            tuple: Tuple (image, target, height, width).
-                   target is the object returned by ``coco.loadAnns``.
-        """
         img_id = self.ids[index]
-        target = self.data_set.image_info[img_id]["annotations"]   # is pointer ?????????????????????
-        #print('debug  target', target)
+
+        target = self.data_set.image_info[img_id]["annotations"]
         path = self.data_set.image_info[img_id]["path"]
         assert osp.exists(path), 'Image path does not exist: {}'.format(path)
-        img = cv2.imread(path)  #        Shape(H, W, C)
-        height, width, c_ = img.shape
-        if self.target_transform is not None:   #process to [xmin,ymin,xmax,ymax, label]
+        img = cv2.imread(path)  # Shape(H, W, C)
+        height, width, channels = img.shape
+
+        if self.target_transform is not None:  # process to [xmin,ymin,xmax,ymax, label]
             target = self.target_transform(target, width, height)
-        if self.transform is not None:  #process to 300X300
+
+        if self.transform is not None:  # process to 300X300
             target = np.array(target)
             if target.size == 0:
                 img, boxes, labels = self.transform(img)
             else:
-                img, boxes, labels = self.transform(img, target[:, :4],
-                                                    target[:, 4])
-            # to rgb
-            img = img[:, :, (2, 1, 0)]
+                img, boxes, labels = self.transform(img, target[:, :4], target[:, 4])
 
+            img = img[:, :, (2, 1, 0)]  # to rgb
             target = np.hstack((boxes, np.expand_dims(labels, axis=1)))
-        return torch.from_numpy(img).permute(2, 0, 1), target, height, width, -1, -1    #c h w
+        return torch.from_numpy(img).permute(2, 0, 1), target, height, width

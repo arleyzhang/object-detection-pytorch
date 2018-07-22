@@ -5,27 +5,25 @@ https://github.com/fmassa/vision/blob/voc_dataset/torchvision/datasets/voc.py
 
 Updated by: Ellis Brown, Max deGroot
 """
-from .config import *   #HOME, VARIANCE
 import os.path as osp
-import sys
-import torch
-import torch.utils.data as data
 import cv2
-import numpy as np
-if sys.version_info[0] == 2:
-    import xml.etree.cElementTree as ET
-else:
-    import xml.etree.ElementTree as ET
+import torch.utils.data as data
+import xml.etree.ElementTree as ET
+from lib.data.config import *  # HOME, VARIANCE
+from lib.data.detect import DetDataset
 
-VOC_CLASSES = (  # always index 0
+# TODO move these global variable
+# 20 classes altogether
+VOC_CLASSES = (
     'aeroplane', 'bicycle', 'bird', 'boat',
     'bottle', 'bus', 'car', 'cat', 'chair',
     'cow', 'diningtable', 'dog', 'horse',
     'motorbike', 'person', 'pottedplant',
     'sheep', 'sofa', 'train', 'tvmonitor')
 
-# note: if you used our download scripts, this should be right
+# note: if you used download scripts in data/scripts, this should be right
 VOC_ROOT = osp.join(HOME, "data/VOCdevkit/")
+
 
 class VOCAnnotationTransform(object):
     """Transforms a VOC annotation into a Tensor of bbox coords and label index
@@ -40,11 +38,11 @@ class VOCAnnotationTransform(object):
         width (int): width
     """
 
-    def __init__(self, is_scale=True, class_to_ind=None, keep_difficult=False):
-        self.class_to_ind = class_to_ind or dict(
-            zip(VOC_CLASSES, range(len(VOC_CLASSES))))
+    def __init__(self, norm_box=True, class_to_ind=None, keep_difficult=False):
+        # TODO use label map
+        self.class_to_ind = class_to_ind or dict(zip(VOC_CLASSES, range(len(VOC_CLASSES))))
         self.keep_difficult = keep_difficult
-        self.is_scale = is_scale
+        self.norm_box = norm_box
 
     def __call__(self, target, width, height):
         """
@@ -65,9 +63,8 @@ class VOCAnnotationTransform(object):
             pts = ['xmin', 'ymin', 'xmax', 'ymax']
             bndbox = []
             for i, pt in enumerate(pts):
-                cur_pt = int(bbox.find(pt).text) - 1
-                # scale height and width
-                if self.is_scale:
+                cur_pt = int(bbox.find(pt).text) - 1  # TODO one-based annotation?
+                if self.norm_box:  # norm box using image height and width
                     cur_pt = cur_pt / width if i % 2 == 0 else cur_pt / height
                 bndbox.append(cur_pt)
             label_idx = self.class_to_ind[name]
@@ -77,73 +74,86 @@ class VOCAnnotationTransform(object):
 
         return res  # [[xmin, ymin, xmax, ymax, label_ind], ... ]
 
-class VOCDetection(data.Dataset):
+class VOCDetection(DetDataset):
     """VOC Detection Dataset Object
 
-    input is image, target is annotation
+     input is image, target is annotation
 
-    Arguments:
-        root (string): filepath to VOCdevkit folder.
-        image_set (string): imageset to use (eg. 'train', 'val', 'test')
-        transform (callable, optional): transformation to perform on the
-            input image
-        target_transform (callable, optional): transformation to perform on the
-            target `annotation`
-            (eg: take in caption string, return tensor of word indices)
-        dataset_name (string, optional): which dataset to load
-            (default: 'VOC2007')
-    """
-    # VOCDetection(root=args.dataset_root, #root='../../data/VOCdevkit',
-    #              transform=SSDAugmentation(cfg['min_dim'],    #cfg['min_dim']=300
-    #              MEANS))
+     Arguments:
+         root (string): filepath to VOCdevkit folder.
+         image_sets (list): imageset to use (eg. 'train', 'val', 'test')
+         transform (callable, optional): transformation to perform on the
+             input image
+         target_transform (callable, optional): transformation to perform on the
+             target `annotation`
+             (eg: take in caption string, return tensor of word indices)
+         dataset_name (string, optional): which dataset to load
+             (default: 'VOC2007')
+     """
     def __init__(self, root,
-                 image_sets=[('2007', 'trainval'), ('2012', 'trainval')],
+                 image_sets=(('2007', 'trainval'), ('2012', 'trainval')),
                  transform=None, target_transform=VOCAnnotationTransform(),
                  dataset_name='VOC0712'):
-        self.root = root
-        self.image_set = image_sets
-        self.transform = transform
-        self.target_transform = target_transform
-        self.name = dataset_name
+        super(VOCDetection, self).__init__(root, image_sets, dataset_name, transform, target_transform)
         self._annopath = osp.join('%s', 'Annotations', '%s.xml')
         self._imgpath = osp.join('%s', 'JPEGImages', '%s.jpg')
-        self.ids = list()   #record img_id
-        for (year, name) in image_sets:
+        self._setup()
+
+    def _setup(self):
+        for (year, name) in self.image_sets:
             rootpath = osp.join(self.root, 'VOC' + year)
             for line in open(osp.join(rootpath, 'ImageSets', 'Main', name + '.txt')):
                 self.ids.append((rootpath, line.strip()))
 
-    def __getitem__(self, index):
-        im, gt, h, w = self.pull_item(index)
-
-        return im, gt
-
-    def __len__(self):
-        return len(self.ids)
-
-    def pull_item(self, index):
+    def _pre_process(self, index):
         img_id = self.ids[index]
-        target = ET.parse(self._annopath % img_id).getroot()    #read xml
-        #print (target, '================')
-        img = cv2.imread(self._imgpath % img_id)    #Shape(H, W, C)
-        height, width, channels = img.shape
-
-        if self.target_transform is not None:
-            target = self.target_transform(target, width, height)
-
-        if self.transform is not None:
-            target = np.array(target)   ##############bug if target==0
-            if target.size == 0:    #no target
-                img, boxes, labels = self.transform(img, None, None)
-                boxes = [[-1, -1, -1, -1]]
-                labels = [-1]
-                #print('no objs----------- in voc.py')
-            else:
-                img, boxes, labels = self.transform(img, target[:, :4], target[:, 4])
-            # to rgb
-            img = img[:, :, (2, 1, 0)]
-
-            target = np.hstack((boxes, np.expand_dims(labels, axis=1)))
-        return torch.from_numpy(img).permute(2, 0, 1), target, height, width
+        target = ET.parse(self._annopath % img_id).getroot()
+        img = cv2.imread(self._imgpath % img_id)  # Shape(H, W, C)
+        return img, target
 
 
+def test_loader():
+    # TODO: a strange bug: data loader hangs in cpu mode
+    os.environ["CUDA_VISIBLE_DEVICES"] = "0"  # Specified GPUs range
+
+    dataset = VOCDetection(VOC_ROOT, [('2007', 'test')],
+                            SSDAugmentation((300, 300), dataset_mean, use_base=True),
+                            VOCAnnotationTransform())
+    data_loader = data.DataLoader(dataset, batch_size=32, num_workers=12, shuffle=False,
+                                  collate_fn=detection_collate, pin_memory=True)
+    for i, (images, targets) in enumerate(data_loader):
+        print(i)
+        # print(targets)
+
+
+# TODO make this an API
+def test_vis():
+    dataset = VOCDetection(VOC_ROOT, [('2007', 'test')],
+                           SSDAugmentation((300, 500), dataset_mean),
+                           VOCAnnotationTransform())
+    from lib.layers.functions.prior_box import TBWriter
+    from tensorboardX import SummaryWriter
+    log_dir = './experiments/models/ssd_voc/test_vis'
+    writer = SummaryWriter(log_dir=log_dir)
+    cfg = {'vis_list': [3, 4, 5, 6, 8]}
+    tb_writer = TBWriter(writer, cfg)
+
+    # import random
+    # img_idx = random.randint(0, len(data_loader.dataset)-1)
+    # image, target = dataset.pull_item(img_index, tb_writer)
+    for img_idx in range(len(dataset)):
+        if img_idx > 5:
+            break
+        tb_writer.cfg['steps'] = img_idx
+        image, target = dataset.pull_item(img_idx, tb_writer)
+        print(image.shape)
+
+
+if __name__ == '__main__':
+    from data import detection_collate
+    from utils import SSDAugmentation
+
+    type = 'test'
+    dataset_mean = (104, 117, 123)
+    test_loader()
+    test_vis()
