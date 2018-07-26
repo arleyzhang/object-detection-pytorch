@@ -10,7 +10,7 @@ import cv2
 import torch.utils.data as data
 import xml.etree.ElementTree as ET
 from lib.data.config import *  # HOME, VARIANCE
-from lib.data.detect import DetDataset
+from lib.data.det_dataset import DetDataset
 
 # TODO move these global variable
 # 20 classes altogether
@@ -67,12 +67,13 @@ class VOCAnnotationTransform(object):
                 if self.norm_box:  # norm box using image height and width
                     cur_pt = cur_pt / width if i % 2 == 0 else cur_pt / height
                 bndbox.append(cur_pt)
-            label_idx = self.class_to_ind[name]
+            label_idx = self.class_to_ind[name]  # TODO, from 0-19 ?!
             bndbox.append(label_idx)
             res += [bndbox]  # [xmin, ymin, xmax, ymax, label_ind]
             # img_id = target.find('filename').text[:-4]
 
         return res  # [[xmin, ymin, xmax, ymax, label_ind], ... ]
+
 
 class VOCDetection(DetDataset):
     """VOC Detection Dataset Object
@@ -90,6 +91,7 @@ class VOCDetection(DetDataset):
          dataset_name (string, optional): which dataset to load
              (default: 'VOC2007')
      """
+
     def __init__(self, root,
                  image_sets=(('2007', 'trainval'), ('2012', 'trainval')),
                  transform=None, target_transform=VOCAnnotationTransform(),
@@ -101,7 +103,7 @@ class VOCDetection(DetDataset):
 
     def _setup(self):
         for (year, name) in self.image_sets:
-            rootpath = osp.join(self.root, 'VOC' + year)
+            rootpath = osp.join(self.data_root, 'VOC' + year)
             for line in open(osp.join(rootpath, 'ImageSets', 'Main', name + '.txt')):
                 self.ids.append((rootpath, line.strip()))
 
@@ -109,7 +111,8 @@ class VOCDetection(DetDataset):
         img_id = self.ids[index]
         target = ET.parse(self._annopath % img_id).getroot()
         img = cv2.imread(self._imgpath % img_id)  # Shape(H, W, C)
-        return img, target
+        extra = img.shape
+        return img, target, extra
 
 
 def test_loader():
@@ -117,11 +120,11 @@ def test_loader():
     os.environ["CUDA_VISIBLE_DEVICES"] = "0"  # Specified GPUs range
 
     dataset = VOCDetection(VOC_ROOT, [('2007', 'test')],
-                            SSDAugmentation((300, 300), dataset_mean, use_base=True),
-                            VOCAnnotationTransform())
+                           SSDAugmentation((300, 300), dataset_mean, use_base=True),
+                           VOCAnnotationTransform())
     data_loader = data.DataLoader(dataset, batch_size=32, num_workers=12, shuffle=False,
                                   collate_fn=detection_collate, pin_memory=True)
-    for i, (images, targets) in enumerate(data_loader):
+    for i, (images, targets, extra) in enumerate(data_loader):
         print(i)
         # print(targets)
 
@@ -131,12 +134,9 @@ def test_vis():
     dataset = VOCDetection(VOC_ROOT, [('2007', 'test')],
                            SSDAugmentation((300, 500), dataset_mean),
                            VOCAnnotationTransform())
-    from lib.layers.functions.prior_box import TBWriter
-    from tensorboardX import SummaryWriter
-    log_dir = './experiments/models/ssd_voc/test_vis'
-    writer = SummaryWriter(log_dir=log_dir)
-    cfg = {'vis_list': [3, 4, 5, 6, 8]}
-    tb_writer = TBWriter(writer, cfg)
+    from lib.utils.visualize_utils import TBWriter
+    log_dir = './experiments/models/ssd_voc/test_pr'
+    tb_writer = TBWriter(log_dir, {'vis_list': [3, 4, 5, 6, 8]})
 
     # import random
     # img_idx = random.randint(0, len(data_loader.dataset)-1)
@@ -145,15 +145,15 @@ def test_vis():
         if img_idx > 5:
             break
         tb_writer.cfg['steps'] = img_idx
-        image, target = dataset.pull_item(img_idx, tb_writer)
+        image, target, extra = dataset.pull_item(img_idx, tb_writer)
         print(image.shape)
 
 
 if __name__ == '__main__':
-    from data import detection_collate
-    from utils import SSDAugmentation
+    from lib.data import detection_collate
+    from lib.utils import SSDAugmentation
 
     type = 'test'
     dataset_mean = (104, 117, 123)
-    test_loader()
+    # test_loader()
     test_vis()

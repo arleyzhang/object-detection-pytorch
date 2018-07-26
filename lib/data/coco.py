@@ -1,14 +1,13 @@
 import os
 import os.path as osp
-import sys
 import numpy as np
 
-import torch
 import torch.utils.data as data
 import cv2
-
 from pycocotools.coco import COCO
-from .config import HOME
+
+from lib.data.config import HOME
+from lib.data.det_dataset import DetDataset
 
 COCO_ROOT = osp.join(HOME, 'data/coco/')
 IMAGES = 'images'
@@ -31,18 +30,22 @@ COCO_CLASSES = ('person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus',
                 'refrigerator', 'book', 'clock', 'vase', 'scissors',
                 'teddy bear', 'hair drier', 'toothbrush')
 
+"""
+coco minival urls
+https://dl.dropboxusercontent.com/s/o43o90bna78omob/instances_minival2014.json.zip?dl=0
+https://dl.dropboxusercontent.com/s/s3tw5zcg7395368/instances_valminusminival2014.json.zip?dl=0
+"""
+
 
 def get_label_map(label_file):
-    if os.path.isfile(label_file):
-        label_map = {}
-        labels = open(label_file, 'r')
-        for line in labels:
-            ids = line.split(',')
-            label_map[int(ids[0])] = int(ids[1])
-        return label_map
-    else:
-        print("Warning: can't train on COCO sets")
-        return None
+    if not os.path.isfile(label_file):
+        raise Exception("No coco label file")
+    label_map = {}
+    labels = open(label_file, 'r')
+    for line in labels:
+        ids = line.split(',')
+        label_map[int(ids[0])] = int(ids[1])
+    return label_map
 
 
 class COCOAnnotationTransform(object):
@@ -50,9 +53,9 @@ class COCOAnnotationTransform(object):
     Initilized with a dictionary lookup of classnames to indexes
     """
 
-    def __init__(self, is_scale=True):
+    def __init__(self, norm_box=True):
         self.label_map = get_label_map(osp.join(COCO_ROOT, 'coco_labels.txt'))
-        self.is_scale = is_scale
+        self.norm_box = norm_box
 
     def __call__(self, target, width, height):
         """
@@ -61,180 +64,118 @@ class COCOAnnotationTransform(object):
             height (int): height
             width (int): width
         Returns:
-            TODO a list containing lists of bounding boxes  [bbox coords, class idx]
         """
         scale = np.array([width, height, width, height])
         res = []
         for obj in target:
             if 'bbox' in obj:
-                bbox_orig = obj['bbox']
-                bbox = [int(bbox_orig[0]) - 1, int(bbox_orig[1]) - 1,
-                        int(bbox_orig[2] + bbox_orig[0]) - 1, int(bbox_orig[3] + bbox_orig[1]) - 1]
+                # origin box in xmin, ymin, width, height
+                bbox = obj['bbox']
+                bbox_ = [bbox[0], bbox[1], bbox[2] + bbox[0], bbox[3] + bbox[1]]
 
-                label_idx = self.label_map[obj['category_id']] - 1
-                if self.is_scale:
-                    final_box = list(np.array(bbox) / scale)  # scale to [0, 1]
+                label_idx = self.label_map[obj['category_id']] - 1  # TODO 0~79?!
+                if self.norm_box:
+                    final_box = list(np.array(bbox_) / scale)  # scale to [0, 1]
                 else:
-                    final_box = list(np.array(bbox))
+                    final_box = list(np.array(bbox_))
                 final_box.append(label_idx)
                 res += [final_box]  # [xmin, ymin, xmax, ymax, label_idx]
             else:
-                # TODO delete it
-                print("no bbox problem!")
+                # TODO solve this problem
+                print("in training coco: no bbox problem!")
 
         return res  # [[xmin, ymin, xmax, ymax, label_idx], ... ]
 
 
-# TODO zheli base???
-class Dataset(object):
-    """The base class for dataset classes.
-    To use it, create a new class that adds functions specific to the dataset
-    you want to use. For example:
-    class CatsAndDogsDataset(Dataset):
-        def load_cats_and_dogs(self):
-            ...
-        def load_mask(self, image_id):
-            ...
-        def image_reference(self, image_id):
-            ...
-    See COCODataset and ShapesDataset as examples.
-    """
-
-    def __init__(self, class_map=None):
-        self._image_ids = []
-        self.img_cnt = 0
-        self.image_info = []
-        # Background is always the first class
-        self.class_info = [{"source": "", "id": 0, "name": "BG"}]
-        self.source_class_ids = {}
-
-    # self.add_class("coco", i, coco.loadCats(i)[0]["name"])
-    def add_class(self, source, class_id, class_name):
-        assert "." not in source, "Source name cannot contain a dot"
-        # Does the class exist already?
-        for info in self.class_info:
-            if info['source'] == source and info["id"] == class_id:
-                # source.class_id combination already available, skip
-                return
-        # Add the class
-        self.class_info.append({
-            "source": source,  # data set name
-            "id": class_id,
-            "name": class_name,
-        })
-
-    def add_image(self, source, image_id, path, **kwargs):
-        image_info = {
-            "id": image_id,  # img id
-            "source": source,  # dataset name, e.g. coco, voc
-            "path": path,  # img path
-        }
-        image_info.update(kwargs)  # default add (key, value)
-        self.image_info.append(image_info)
-        self._image_ids.append(self.img_cnt)
-        self.img_cnt += 1
-
-
-class CocoDataset(Dataset):
-    def load_coco(self, dataset_dir, subset, year='2014', class_ids=None,
-                  class_map=None):
-        """Load a subset of the COCO dataset.
-        dataset_dir: The root directory of the COCO dataset.
-        subset: What to load (train, val, minival, valminusminival)
-        year: What dataset year to load (2014, 2017) as a string, not an integer
-        class_ids: If provided, only loads images that have the given classes.
-        class_map: TODO: Not implemented yet. Supports maping classes from
-            different datasets to the same class ID.
-        return_coco: If True, returns the COCO object.
-        auto_download: Automatically download and unzip MS-COCO images and annotations
-        """
-
-        coco = COCO("{}/annotations/instances_{}{}.json".format(dataset_dir, subset, year))
-        if subset == "minival" or subset == "valminusminival":
-            subset = "val"
-        image_dir = "{}/{}{}".format(dataset_dir, subset, year)
-
-        # Load all classes or a subset?
-        if not class_ids:
-            # All classes
-            class_ids = sorted(coco.getCatIds())
-
-        # All images or a subset?
-        if class_ids:  # if not none, only keep these class_ids
-            image_ids = []
-            for id in class_ids:
-                image_ids.extend(list(coco.getImgIds(catIds=[id])))
-            # Remove duplicates
-            image_ids = list(set(image_ids))
-        else:
-            # All images
-            image_ids = list(coco.imgs.keys())
-
-        # Add classes
-        for i in class_ids:
-            self.add_class("coco", i, coco.loadCats(i)[0]["name"])
-
-        # Add images
-        for i in image_ids:
-            self.add_image(
-                "coco", image_id=i,
-                path=os.path.join(image_dir, coco.imgs[i]['file_name']),
-                width=coco.imgs[i]["width"],
-                height=coco.imgs[i]["height"],
-                annotations=coco.loadAnns(coco.getAnnIds(
-                    imgIds=[i], catIds=class_ids, iscrowd=None)))
-
-
-class COCODetection(data.Dataset):
+class COCODetection(DetDataset):
     """`MS Coco Detection <http://mscoco.org/dataset/#detections-challenge2016>`_ Dataset.
     Args:
         root (string): Root directory where images are downloaded to.
-        set_name (string): Name of the specific set of COCO images.
+        image_sets (tuple): Name of the specific set of COCO images.
         transform (callable, optional): A function/transform that augments the
                                         raw images`
         target_transform (callable, optional): A function/transform that takes
         in the target (bbox) and transforms it.
     """
 
-    def __init__(self, root, image_set=['train', 'valminusminival'], transform=None,
+    def __init__(self, root, image_sets=('train2014', 'valminusminival2014'), transform=None,
                  target_transform=COCOAnnotationTransform(), dataset_name='MS COCO'):
-        sys.path.append(osp.join(root, COCO_API))
-        self.root = root
-        self.data_set = CocoDataset()
-        for subset in image_set:
-            self.data_set.load_coco(root, subset)
+        # no same id in coco train and val
+        super(COCODetection, self).__init__(root, image_sets, dataset_name,
+                                               transform, target_transform)
+        self.size_cum = np.array([])
+        self.cocos = []
+        self._setup()
 
-        self.ids = self.data_set._image_ids
-        self.transform = transform
-        self.target_transform = target_transform
-        self.name = dataset_name
+    def _setup(self):
+        # we need to deal with valminusminival and minival
+        size_list = []
+        for i, set_name in enumerate(self.image_sets):
+            folder_name = 'val2014' if 'val' in set_name else 'train2014'
+            self.cocos.append({'root': osp.join(self.data_root, IMAGES, folder_name),
+                               'coco': COCO(osp.join(self.data_root, ANNOTATIONS,
+                                                     INSTANCES_SET.format(set_name)))})
+            # keys = self.cocos[i]['coco'].getImgIds()
+            keys = list(self.cocos[i]['coco'].imgToAnns.keys())
+            size_list.append(len(keys))  # only save images with ground truth
+            self.ids += keys
+        self.size_cum = np.cumsum(size_list)  # use cumsum to determine which dataset id in
 
-    def __getitem__(self, index):
-        im, gt, h, w = self.pull_item(index)
-        return im, gt
-
-    def __len__(self):
-        return len(self.ids)
-
-    def pull_item(self, index):
+    def _pre_process(self, index):
         img_id = self.ids[index]
-
-        target = self.data_set.image_info[img_id]["annotations"]
-        path = self.data_set.image_info[img_id]["path"]
+        set_id = int(np.argmax(index < self.size_cum))  # not support index>size_cum[-1]
+        target = self.cocos[set_id]['coco'].imgToAnns[img_id]  # list of annos
+        f_n = self.cocos[set_id]['coco'].loadImgs(img_id)[0]['file_name']  # image name
+        path = osp.join(self.cocos[set_id]['root'], f_n)
         assert osp.exists(path), 'Image path does not exist: {}'.format(path)
-        img = cv2.imread(path)  # Shape(H, W, C)
-        height, width, channels = img.shape
+        img = cv2.imread(osp.join(self.cocos[set_id]['root'], path))
+        extra = img.shape
+        return img, target, extra
 
-        if self.target_transform is not None:  # process to [xmin,ymin,xmax,ymax, label]
-            target = self.target_transform(target, width, height)
 
-        if self.transform is not None:  # process to 300X300
-            target = np.array(target)
-            if target.size == 0:
-                img, boxes, labels = self.transform(img)
-            else:
-                img, boxes, labels = self.transform(img, target[:, :4], target[:, 4])
+def test_loader():
+    # TODO: a strange bug: data loader hangs in cpu mode
+    os.environ["CUDA_VISIBLE_DEVICES"] = "0"  # Specified GPUs range
+    # ('val2014', 'minival2014','valminusminival2014', 'train2014')
+    dataset = COCODetection(COCO_ROOT, ('val2014',),
+                               SSDAugmentation((300, 300), dataset_mean, use_base=True),
+                               COCOAnnotationTransform())
+    data_loader = data.DataLoader(dataset, batch_size=24, num_workers=24, shuffle=False,
+                                  collate_fn=detection_collate, pin_memory=True)
 
-            img = img[:, :, (2, 1, 0)]  # to rgb
-            target = np.hstack((boxes, np.expand_dims(labels, axis=1)))
-        return torch.from_numpy(img).permute(2, 0, 1), target, height, width
+    print(len(dataset))
+    for i, (images, targets) in enumerate(data_loader):
+        print(i)
+
+
+def test_vis():
+    dataset = COCODetection(COCO_ROOT, ('valminusminival2014',),
+                               SSDAugmentation((300, 300), dataset_mean, use_base=True),
+                               COCOAnnotationTransform())
+    from lib.utils.visualize_utils import TBWriter
+    from tensorboardX import SummaryWriter
+    log_dir = './experiments/models/ssd_voc/test_vis_coco'
+    writer = SummaryWriter(log_dir=log_dir)
+    cfg = {'vis_list': [3, 4, 5, 6, 8]}
+    tb_writer = TBWriter(writer, cfg)
+
+    # import random
+    # img_idx = random.randint(0, len(dataset)-1)
+    # image, target = dataset.pull_item(img_idx, tb_writer)
+
+    for img_idx in range(len(dataset)):
+        if img_idx > 5:
+            break
+        tb_writer.cfg['steps'] = img_idx
+        image, target = dataset.pull_item(img_idx, tb_writer)
+        print(image.shape)
+
+
+if __name__ == '__main__':
+    from data import detection_collate
+    from utils import SSDAugmentation
+
+    type = 'test'
+    dataset_mean = (104, 117, 123)
+    test_loader()
+    test_vis()

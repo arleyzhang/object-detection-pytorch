@@ -7,6 +7,9 @@ import types
 from numpy import random
 import collections
 
+from lib.utils.visualize_utils import vis_img_box
+
+
 def intersect(box_a, box_b):
     max_xy = np.minimum(box_a[:, 2:], box_b[2:])
     min_xy = np.maximum(box_a[:, :2], box_b[:2])
@@ -32,32 +35,6 @@ def jaccard_numpy(box_a, box_b):
               (box_b[3] - box_b[1]))  # [A,B]
     union = area_a + area_b - inter
     return inter / union  # [A,B]
-
-
-class Compose(object):
-    """Composes several augmentations together.
-    Args:
-        transforms (List[Transform]): list of transforms to compose.
-    Example:
-        >>> augmentations.Compose([
-        >>>     transforms.CenterCrop(10),
-        >>>     transforms.ToTensor(),
-        >>> ])
-    """
-
-    def __init__(self, transforms):
-        self.transforms = transforms
-
-    def __call__(self, img, boxes=None, labels=None, tb_writer=None):
-        if tb_writer is not None:
-            tb_writer.cfg['aug_name'] = '0_input'
-            vis_aug(img, boxes, labels, tb_writer)
-        for i, t in enumerate(self.transforms):
-            img, boxes, labels = t(img, boxes, labels)
-            if tb_writer is not None and i + 1 in tb_writer.cfg['vis_list']:
-                tb_writer.cfg['aug_name'] = '{}_{}'.format(i + 1, type(t).__name__)
-                vis_aug(img, boxes, labels, tb_writer)
-        return img, boxes, labels
 
 
 class Lambda(object):
@@ -114,8 +91,7 @@ class Resize(object):
         self.size = size
 
     def __call__(self, image, boxes=None, labels=None):
-        image = cv2.resize(image, (self.size[1],
-                                   self.size[0]))
+        image = cv2.resize(image, (self.size[1], self.size[0]))
         return image, boxes, labels
 
 
@@ -257,7 +233,7 @@ class RandomSampleCrop(object):
         # max trails (50)
         for _ in range(50):
             current_image = image
-
+            # TODO make this configurable
             w = random.uniform(0.3 * width, width)
             h = random.uniform(0.3 * height, height)
 
@@ -402,28 +378,30 @@ class PhotometricDistort(object):
         return self.rand_light_noise(im, boxes, labels)
 
 
-def draw_bbox(image, bbxs, color=(255, 255, 0)):
-    img = image.copy()
-    bboxes = bbxs.copy()
-    for bbx in bboxes:  # coordinates shift in the aug process
-        if bbx[2] <= 1:
-            bbx[0] *= img.shape[1]
-            bbx[1] *= img.shape[0]
-            bbx[2] *= img.shape[1]
-            bbx[3] *= img.shape[0]
-        bbx = bbx.astype(np.int32)
-        cv2.rectangle(img, (bbx[0], bbx[1]), (bbx[2], bbx[3]), color, 5)
-    return img
+class Compose(object):
+    """Composes several augmentations together.
+    Args:
+        transforms (List[Transform]): list of transforms to compose.
+    Example:
+        >>> augmentations.Compose([
+        >>>     transforms.CenterCrop(10),
+        >>>     transforms.ToTensor(),
+        >>> ])
+    """
 
+    def __init__(self, transforms):
+        self.transforms = transforms
 
-def vis_aug(img, boxes, labels, tb_writer):
-    image = draw_bbox(img, boxes)
-    cv2.imwrite('demo/temp.jpg', image)
-    image = cv2.imread('demo/temp.jpg')
-    image = image[..., ::-1]  # to rgb
-    tb_writer.writer.add_image('preprocess/%s' % tb_writer.cfg['aug_name'],
-                               image, tb_writer.cfg['steps'])
-    return img, boxes, labels
+    def __call__(self, img, boxes=None, labels=None, tb_writer=None):
+        if tb_writer is not None:
+            tb_writer.cfg['aug_name'] = '0_input'
+            vis_img_box(img, boxes, None, tb_writer)
+        for i, t in enumerate(self.transforms):
+            img, boxes, labels = t(img, boxes, labels)
+            if tb_writer is not None and i + 1 in tb_writer.cfg['vis_list']:
+                tb_writer.cfg['aug_name'] = '{}_{}'.format(i + 1, type(t).__name__)
+                vis_img_box(img, boxes, None, tb_writer)
+        return img, boxes, labels
 
 
 class SSDAugmentation(object):

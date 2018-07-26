@@ -2,11 +2,96 @@ import torch
 import cv2
 import numpy as np
 import math
+from tensorboardX import SummaryWriter
+
+
+class TBWriter(object):
+    """class contains tensorboard writer and its config"""
+    def __init__(self, log_dir=None, cfg=None):
+        self.log_dir = log_dir
+        self.writer = SummaryWriter(log_dir=self.log_dir)
+        self.cfg = cfg
+
+
+def draw_bbox(img, bbxs, color=(255, 255, 0), cfg=None):
+    img = img.copy()
+    bboxes = bbxs.copy()
+    bboxes = bboxes[bboxes[:, 4] > cfg['thresh']]
+    for bbx in bboxes:  # coordinates shift in the aug process
+        if bbx[2] <= 1:
+            bbx[0] *= img.shape[1]
+            bbx[1] *= img.shape[0]
+            bbx[2] *= img.shape[1]
+            bbx[3] *= img.shape[0]
+        if len(bbx) == 5:  # ground truth
+            cv2.rectangle(img, (bbx[0], bbx[1]), (bbx[2], bbx[3]), (0, 0, 255), 2)
+            cv2.putText(img=img, text='{:d}'.format(int(bbx[4])),
+                        org=(bbx[0], int(bbx[1] + 20)),
+                        fontFace=cv2.FONT_HERSHEY_TRIPLEX, fontScale=0.8,
+                        color=(0, 0, 255), thickness=2)
+        elif len(bbx) > 6:  # prediction
+            cv2.rectangle(img, (bbx[0], bbx[1]), (bbx[2], bbx[3]), color, 2)
+            cv2.putText(img=img, text='{:d}_{:.3f}'.format(int(bbx[6]), bbx[4]),
+                        org=(bbx[0], bbx[3]),
+                        fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=0.8,
+                        color=color, thickness=2)
+    return img
+
+
+def vis_img_box(img, boxes, resize, tb_writer):
+    colors = [(255, 255, 0), (0, 255, 0)]
+    image = img.copy()
+    if resize is not None:
+        image = cv2.resize(image, (resize[1], resize[0]))
+    if not isinstance(boxes, dict):
+        boxes = {'box': boxes}
+    if isinstance(boxes, dict):
+        for key, color in zip(boxes.keys(), colors):
+            image = draw_bbox(image, boxes[key], color, tb_writer.cfg)
+
+    cv2.imwrite('demo/temp.jpg', image)  # TODO solve this bug
+    image = cv2.imread('demo/temp.jpg')
+    image = image[..., ::-1]  # to rgb
+    # TODO config output path
+    # tb_writer.writer.add_image('preprocess/%s' % tb_writer.cfg['aug_name'],
+    #                            image, tb_writer.cfg['steps'])
+    tb_writer.writer.add_image('postprocess/{}_{}'.format(tb_writer.cfg['steps'], tb_writer.cfg['img_id']),
+                               image, 10)
+
+
+def viz_pr_curve(res, tb_writer):
+    """
+    :param res: tuple of (cls, ap, prec, rec)
+    :param tb_writer: TBWriter
+    """
+    epoch = tb_writer.cfg['epoch'] if 'epoch' in tb_writer.cfg else 0
+    print(epoch)
+    for cls, ap, prec, rec in res:
+        tb_writer.writer.add_scalar('AP/{}'.format(cls), ap, epoch)
+        num_thresholds = min(500, len(prec))
+        if num_thresholds != len(prec):
+            gap = int(len(prec) / num_thresholds)
+            prec = np.append(prec[::gap], prec[-1])
+            rec = np.append(rec[::gap], rec[-1])
+            num_thresholds = len(prec)
+        prec.sort()
+        rec[::-1].sort()
+        tb_writer.writer.add_pr_curve_raw(
+            tag=cls,
+            true_positive_counts=-np.ones(num_thresholds),
+            false_positive_counts=-np.ones(num_thresholds),
+            true_negative_counts=-np.ones(num_thresholds),
+            false_negative_counts=-np.ones(num_thresholds),
+            precision=prec,
+            recall=rec,
+            global_step=epoch,
+            num_thresholds=num_thresholds
+        )
 
 
 def images_to_writer(writer, images, prefix='image', names='image', epoch=0):
     if isinstance(names, str):
-        names = [names+'_{}'.format(i) for i in range(len(images))]
+        names = [names + '_{}'.format(i) for i in range(len(images))]
 
     for image, name in zip(images, names):
         writer.add_image('{}/{}'.format(prefix, name), image, epoch)
@@ -29,22 +114,23 @@ def to_grayscale(image):
 
 def to_image_size(feature, target_img):
     height, width, _ = target_img.shape
-    resized_feature = cv2.resize(feature, (width, height)) 
+    resized_feature = cv2.resize(feature, (width, height))
     return resized_feature
 
 
 def features_to_grid(features):
     num, height, width, channel = (len(features), len(features[0]), len(features[0][0]), len(features[0][0]))
     rows = math.ceil(np.sqrt(num))
-    output = np.zeros([rows*(height+2),rows*(width+2), 3],dtype=np.float32)
+    output = np.zeros([rows * (height + 2), rows * (width + 2), 3], dtype=np.float32)
 
     for i, feature in enumerate(features):
         row = i % rows
         col = math.floor(i / rows)
-        output[row*(2+height)+1:(row+1)*(2+height)-1, col*(2+width)+1:(col+1)*(2+width)-1] = feature
+        output[row * (2 + height) + 1:(row + 1) * (2 + height) - 1,
+        col * (2 + width) + 1:(col + 1) * (2 + width) - 1] = feature
 
     return output
-    
+
 
 def viz_feature_maps(writer, feature_maps, module_name='base', epoch=0, prefix='module_feature_maps'):
     feature_map_visualization = []
@@ -52,7 +138,7 @@ def viz_feature_maps(writer, feature_maps, module_name='base', epoch=0, prefix='
         i = i.squeeze(0)
         temp = to_grayscale(i)
         feature_map_visualization.append(temp.data.cpu().numpy())
-        
+
     names, feature_map_heatmap = [], []
     for i, feature_map in enumerate(feature_map_visualization):
         feature_map = (feature_map * 255)
@@ -63,25 +149,27 @@ def viz_feature_maps(writer, feature_maps, module_name='base', epoch=0, prefix='
     images_to_writer(writer, feature_map_heatmap, prefix, names, epoch)
 
 
-def viz_grads(writer, model, feature_maps, target_image, target_mean, module_name='base', epoch=0, prefix='module_grads'):
+def viz_grads(writer, model, feature_maps, target_image, target_mean, module_name='base', epoch=0,
+              prefix='module_grads'):
     grads_visualization = []
     names = []
     for i, feature_map in enumerate(feature_maps):
         model.zero_grad()
-        
+
         # print()
         feature_map.backward(torch.Tensor(np.ones(feature_map.size())), retain_graph=True)
         # print(target_image.grad)
-        grads = target_image.grad.data.clamp(min=0).squeeze(0).permute(1,2,0)
+        grads = target_image.grad.data.clamp(min=0).squeeze(0).permute(1, 2, 0)
         # print(grads)
         # assert False
-        grads_visualization.append(grads.cpu().numpy()+target_mean)
+        grads_visualization.append(grads.cpu().numpy() + target_mean)
         names.append('{}.{}'.format(module_name, i))
-    
+
     images_to_writer(writer, grads_visualization, prefix, names, epoch)
 
 
-def viz_module_feature_maps(writer, module, input_image, module_name='base', epoch=0, mode='one', prefix='module_feature_maps'):
+def viz_module_feature_maps(writer, module, input_image, module_name='base', epoch=0, mode='one',
+                            prefix='module_feature_maps'):
     output_image = input_image
     feature_maps = []
 
@@ -97,7 +185,8 @@ def viz_module_feature_maps(writer, module, input_image, module_name='base', epo
     return output_image
 
 
-def viz_module_grads(writer, model, module, input_image, target_image, target_mean, module_name='base', epoch=0, mode='one', prefix='module_grads'):
+def viz_module_grads(writer, model, module, input_image, target_image, target_mean, module_name='base', epoch=0,
+                     mode='one', prefix='module_grads'):
     output_image = input_image
     feature_maps = []
 
@@ -109,7 +198,7 @@ def viz_module_grads(writer, model, module, input_image, target_image, target_me
         pass
     elif mode is 'one':
         viz_grads(writer, model, feature_maps, target_image, target_mean, module_name, epoch, prefix)
-    
+
     return output_image
 
 
@@ -145,30 +234,6 @@ def viz_module_grads(writer, model, module, input_image, target_image, target_me
 #         add_pr_curve_raw(
 #             writer=writer, tag='pr_curve/class_{}'.format(i+1), precision = _prec, recall = _rec, epoch = epoch )
 
-def viz_pr_curve_new(writer, tag, precision, recall, epoch=0):
-    # num_thresholds = len(precision)
-    num_thresholds = min(500, len(precision))
-    if num_thresholds != len(precision):
-        gap = int(len(precision) / num_thresholds)
-        precision = np.append(precision[::gap], precision[-1])
-        recall  = np.append(recall[::gap], recall[-1])
-        num_thresholds = len(precision)
-    precision.sort()
-    recall[::-1].sort()
-    # print(precision)
-    # print(recall)
-    writer.add_pr_curve_raw(
-        tag=tag,
-        true_positive_counts = -np.ones(num_thresholds),
-        false_positive_counts = -np.ones(num_thresholds),
-        true_negative_counts = -np.ones(num_thresholds),
-        false_negative_counts = -np.ones(num_thresholds),
-        precision = precision,
-        recall = recall,
-        global_step = epoch,
-        num_thresholds = num_thresholds
-    )
-
 
 def viz_archor_strategy(writer, sizes, labels, epoch=0):
     ''' generate archor strategy for all classes
@@ -180,19 +245,19 @@ def viz_archor_strategy(writer, sizes, labels, epoch=0):
         _height, _width, _max_size, _min_size, _aspect_ratio = [list() for _ in range(5)]
         for size in _size:
             _height += [size[0]]
-            _width  += [size[1]]
+            _width += [size[1]]
             _max_size += [max(size)]
             _min_size += [min(size)]
-            _aspect_ratio += [size[0]/size[1] if size[0] < size[1] else size[1]/size[0]]
+            _aspect_ratio += [size[0] / size[1] if size[0] < size[1] else size[1] / size[0]]
         height += _height
         width += _width
         max_size += _max_size
         min_size += _min_size
         aspect_ratio += _aspect_ratio
         label += _label
-    
+
     height, width, max_size, min_size, aspect_ratio = \
-        np.array(height), np.array(width), np.array(max_size), np.array(min_size), np.array(aspect_ratio)   
+        np.array(height), np.array(width), np.array(max_size), np.array(min_size), np.array(aspect_ratio)
     matched_height, matched_width, matched_max_size, matched_min_size, matched_aspect_ratio = \
         height[label], width[label], max_size[label], min_size[label], aspect_ratio[label]
 
@@ -202,71 +267,80 @@ def viz_archor_strategy(writer, sizes, labels, epoch=0):
     # matched_height, matched_width, matched_max_size, matched_min_size, matched_aspect_ratio = \
     matched_height.sort(), matched_width.sort(), matched_max_size.sort(), matched_min_size.sort(), matched_aspect_ratio.sort()
 
-    x_axis = np.arange(num_thresholds)[::-1]/num_thresholds + 0.5 / num_thresholds
+    x_axis = np.arange(num_thresholds)[::-1] / num_thresholds + 0.5 / num_thresholds
 
     # height 
     gt_y, _ = np.histogram(height, bins=num_thresholds, range=(0.0, 1.0))
-    gt_y = np.clip( gt_y[::-1]/len(height), 1e-8, 1.0)
+    gt_y = np.clip(gt_y[::-1] / len(height), 1e-8, 1.0)
     add_pr_curve_raw(
-        writer=writer, tag='archor_strategy/height_distribute_gt', precision = gt_y, recall = x_axis, epoch = epoch )
+        writer=writer, tag='archor_strategy/height_distribute_gt', precision=gt_y, recall=x_axis, epoch=epoch)
     add_pr_curve_raw(
-        writer=writer, tag='archor_strategy/height_distribute_gt_normalized', precision = gt_y/max(gt_y), recall = x_axis, epoch = epoch )
-    
-    matched_y, _ = np.histogram(matched_height, bins=num_thresholds,range=(0.0, 1.0))
-    matched_y = np.clip( matched_y[::-1]/len(height), 1e-8, 1.0)
+        writer=writer, tag='archor_strategy/height_distribute_gt_normalized', precision=gt_y / max(gt_y), recall=x_axis,
+        epoch=epoch)
+
+    matched_y, _ = np.histogram(matched_height, bins=num_thresholds, range=(0.0, 1.0))
+    matched_y = np.clip(matched_y[::-1] / len(height), 1e-8, 1.0)
     add_pr_curve_raw(
-        writer=writer, tag='archor_strategy/height_distribute_matched', precision = matched_y/gt_y, recall = x_axis, epoch = epoch )
+        writer=writer, tag='archor_strategy/height_distribute_matched', precision=matched_y / gt_y, recall=x_axis,
+        epoch=epoch)
 
     # width
     gt_y, _ = np.histogram(width, bins=num_thresholds, range=(0.0, 1.0))
-    gt_y = np.clip( gt_y[::-1]/len(width), 1e-8, 1.0)
+    gt_y = np.clip(gt_y[::-1] / len(width), 1e-8, 1.0)
     add_pr_curve_raw(
-        writer=writer, tag='archor_strategy/width_distribute_gt', precision = gt_y, recall = x_axis, epoch = epoch )
+        writer=writer, tag='archor_strategy/width_distribute_gt', precision=gt_y, recall=x_axis, epoch=epoch)
     add_pr_curve_raw(
-        writer=writer, tag='archor_strategy/width_distribute_gt_normalized', precision = gt_y/max(gt_y), recall = x_axis, epoch = epoch )
-    
-    matched_y, _ = np.histogram(matched_width, bins=num_thresholds,range=(0.0, 1.0))
-    matched_y = np.clip( matched_y[::-1]/len(width), 1e-8, 1.0)
+        writer=writer, tag='archor_strategy/width_distribute_gt_normalized', precision=gt_y / max(gt_y), recall=x_axis,
+        epoch=epoch)
+
+    matched_y, _ = np.histogram(matched_width, bins=num_thresholds, range=(0.0, 1.0))
+    matched_y = np.clip(matched_y[::-1] / len(width), 1e-8, 1.0)
     add_pr_curve_raw(
-        writer=writer, tag='archor_strategy/width_distribute_matched', precision = matched_y/gt_y, recall = x_axis, epoch = epoch )
+        writer=writer, tag='archor_strategy/width_distribute_matched', precision=matched_y / gt_y, recall=x_axis,
+        epoch=epoch)
 
     # max_size
     gt_y, _ = np.histogram(max_size, bins=num_thresholds, range=(0.0, 1.0))
-    gt_y = np.clip( gt_y[::-1]/len(max_size), 1e-8, 1.0)
+    gt_y = np.clip(gt_y[::-1] / len(max_size), 1e-8, 1.0)
     add_pr_curve_raw(
-        writer=writer, tag='archor_strategy/max_size_distribute_gt', precision = gt_y, recall = x_axis, epoch = epoch )
+        writer=writer, tag='archor_strategy/max_size_distribute_gt', precision=gt_y, recall=x_axis, epoch=epoch)
     add_pr_curve_raw(
-        writer=writer, tag='archor_strategy/max_size_distribute_gt_normalized', precision = gt_y/max(gt_y), recall = x_axis, epoch = epoch )
-    
-    matched_y, _ = np.histogram(matched_max_size, bins=num_thresholds,range=(0.0, 1.0))
-    matched_y = np.clip( matched_y[::-1]/len(max_size), 1e-8, 1.0)
+        writer=writer, tag='archor_strategy/max_size_distribute_gt_normalized', precision=gt_y / max(gt_y),
+        recall=x_axis, epoch=epoch)
+
+    matched_y, _ = np.histogram(matched_max_size, bins=num_thresholds, range=(0.0, 1.0))
+    matched_y = np.clip(matched_y[::-1] / len(max_size), 1e-8, 1.0)
     add_pr_curve_raw(
-        writer=writer, tag='archor_strategy/max_size_distribute_matched', precision = matched_y/gt_y, recall = x_axis, epoch = epoch )
+        writer=writer, tag='archor_strategy/max_size_distribute_matched', precision=matched_y / gt_y, recall=x_axis,
+        epoch=epoch)
 
     # min_size
     gt_y, _ = np.histogram(min_size, bins=num_thresholds, range=(0.0, 1.0))
-    gt_y = np.clip( gt_y[::-1]/len(min_size), 1e-8, 1.0)
+    gt_y = np.clip(gt_y[::-1] / len(min_size), 1e-8, 1.0)
     add_pr_curve_raw(
-        writer=writer, tag='archor_strategy/min_size_distribute_gt', precision = gt_y, recall = x_axis, epoch = epoch )
+        writer=writer, tag='archor_strategy/min_size_distribute_gt', precision=gt_y, recall=x_axis, epoch=epoch)
     add_pr_curve_raw(
-        writer=writer, tag='archor_strategy/min_size_distribute_gt_normalized', precision = gt_y/max(gt_y), recall = x_axis, epoch = epoch )
-    
-    matched_y, _ = np.histogram(matched_min_size, bins=num_thresholds,range=(0.0, 1.0))
-    matched_y = np.clip( matched_y[::-1]/len(min_size), 1e-8, 1.0)
+        writer=writer, tag='archor_strategy/min_size_distribute_gt_normalized', precision=gt_y / max(gt_y),
+        recall=x_axis, epoch=epoch)
+
+    matched_y, _ = np.histogram(matched_min_size, bins=num_thresholds, range=(0.0, 1.0))
+    matched_y = np.clip(matched_y[::-1] / len(min_size), 1e-8, 1.0)
     add_pr_curve_raw(
-        writer=writer, tag='archor_strategy/min_size_distribute_matched', precision = matched_y/gt_y, recall = x_axis, epoch = epoch )
-    
+        writer=writer, tag='archor_strategy/min_size_distribute_matched', precision=matched_y / gt_y, recall=x_axis,
+        epoch=epoch)
+
     # aspect_ratio
     gt_y, _ = np.histogram(aspect_ratio, bins=num_thresholds, range=(0.0, 1.0))
-    gt_y = np.clip( gt_y[::-1]/len(aspect_ratio), 1e-8, 1.0)
+    gt_y = np.clip(gt_y[::-1] / len(aspect_ratio), 1e-8, 1.0)
     add_pr_curve_raw(
-        writer=writer, tag='archor_strategy/aspect_ratio_distribute_gt', precision = gt_y, recall = x_axis, epoch = epoch )
+        writer=writer, tag='archor_strategy/aspect_ratio_distribute_gt', precision=gt_y, recall=x_axis, epoch=epoch)
     add_pr_curve_raw(
-        writer=writer, tag='archor_strategy/aspect_ratio_distribute_gt_normalized', precision = gt_y/max(gt_y), recall = x_axis, epoch = epoch )
-    
-    matched_y, _ = np.histogram(matched_aspect_ratio, bins=num_thresholds,range=(0.0, 1.0))
-    matched_y = np.clip( matched_y[::-1]/len(aspect_ratio), 1e-8, 1.0)
-    add_pr_curve_raw(
-        writer=writer, tag='archor_strategy/aspect_ratio_distribute_matched', precision = matched_y/gt_y, recall = x_axis, epoch = epoch )
+        writer=writer, tag='archor_strategy/aspect_ratio_distribute_gt_normalized', precision=gt_y / max(gt_y),
+        recall=x_axis, epoch=epoch)
 
+    matched_y, _ = np.histogram(matched_aspect_ratio, bins=num_thresholds, range=(0.0, 1.0))
+    matched_y = np.clip(matched_y[::-1] / len(aspect_ratio), 1e-8, 1.0)
+    add_pr_curve_raw(
+        writer=writer, tag='archor_strategy/aspect_ratio_distribute_matched', precision=matched_y / gt_y, recall=x_axis,
+        epoch=epoch)
 

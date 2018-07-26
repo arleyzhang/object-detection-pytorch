@@ -5,6 +5,8 @@ import torch
 import numpy as np
 import cv2
 
+from lib.utils.visualize_utils import TBWriter
+
 
 def vis(func):
     """tensorboard visualization if has writer as input"""
@@ -186,14 +188,6 @@ def test_rectangle(cfg, tb_writer):
     p = PriorBoxSSD(cfg)
     p1 = p.forward(feat_dim, tb_writer=tb_writer)
     print(p1.shape)
-
-
-class TBWriter(object):
-    """class contains tensorboard writer and its config"""
-
-    def __init__(self, writer, cfg=None):
-        self.writer = writer
-        self.cfg = cfg
 
 
 if __name__ == '__main__':

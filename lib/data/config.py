@@ -21,8 +21,8 @@ ssd_voc_vgg = {
     'num_classes': 21,
     # model type
     'base_model': 'vgg16',
-    'ssds_type': 'ssd',
-    'prior_type': 'ssd',
+    'ssds_type': 'SSD',
+    'prior_type': 'PriorBoxSSD',
     # model params
     'image_size': [300, 300],  # [H, W]
     # 'min_dim': 300,  # resize
@@ -39,7 +39,10 @@ ssd_voc_vgg = {
 }
 
 ssd_coco_vgg = {
-    'num_classes': 81,  # 201????
+    'num_classes': 81,
+    'base_model': 'vgg16',
+    'ssds_type': 'SSD_COCO',
+    'prior_type': 'PriorBoxSSD',
     'lr_steps': (280000, 360000, 400000),
     'max_iter': 400000,
     # 'mbox_source_layers': [21, 33, 36, 38, 40, 42], #conv4_3
@@ -48,12 +51,11 @@ ssd_coco_vgg = {
     'steps': [8, 16, 32, 64, 100, 300],
     'min_sizes': [21, 45, 99, 153, 207, 261],
     'max_sizes': [45, 99, 153, 207, 261, 315],
-    'aspect_ratios': [[2], [2, 3], [2, 3], [2, 3], [2], [2]],
+    'aspect_ratios': [[2, 3], [2, 3], [2, 3], [2, 3], [2], [2]],
     'variance': [0.1, 0.2],
     'clip': True,
+    'flip': True,
     'dataset_name': 'COCO',
-    'base_model': 'vgg16',
-    'ssds_type': 'ssd',
 }
 
 # FPN

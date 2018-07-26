@@ -174,7 +174,7 @@ def do_python_eval(output_dir='output', use_07=True):
         with open(os.path.join(output_dir, cls + '_pr.pkl'), 'wb') as f:
             pickle.dump({'rec': rec, 'prec': prec, 'ap': ap}, f)
 
-        viz_pr_curve_new(writer, cls, prec, rec)
+        viz_pr_curve(writer, cls, prec, rec)
 
     print('Mean AP = {:.4f}'.format(np.mean(aps)))
     print('~~~~~~~~')

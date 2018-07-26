@@ -2,13 +2,9 @@
 from __future__ import division
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from torch.autograd import Variable
-from data import VARIANCE
+from lib.data import VARIANCE
 from ..box_utils import IoG, decode_new
-import sys
-import numpy as np
-import math
 
 
 class RepulsionLoss(nn.Module):

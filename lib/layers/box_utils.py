@@ -222,7 +222,6 @@ def decode(loc, priors, variances):
     Return:
         decoded bounding box predictions
     """
-
     boxes = torch.cat((
         priors[:, :2] + loc[:, :2] * variances[0] * priors[:, 2:],
         priors[:, 2:] * torch.exp(loc[:, 2:] * variances[1])), 1)
@@ -260,7 +259,6 @@ def log_sum_exp(x):
     x_max = x.data.max()
     return torch.log(torch.sum(torch.exp(x-x_max), 1, keepdim=True)) + x_max
 
-
 # Original author: Francisco Massa:
 # https://github.com/fmassa/object-detection.torch
 # Ported to PyTorch by Max deGroot (02/01/2017)
@@ -275,6 +273,7 @@ def nms(boxes, scores, overlap=0.5, top_k=200):
     Return:
         The indices of the kept boxes with respect to num_priors.
     """
+    # scores = scores.data
     keep = scores.new(scores.size(0)).zero_().long()
     if boxes.numel() == 0:
         return keep
@@ -320,11 +319,11 @@ def nms(boxes, scores, overlap=0.5, top_k=200):
         # check sizes of xx1 and xx2.. after each iteration
         w = torch.clamp(w, min=0.0)
         h = torch.clamp(h, min=0.0)
-        inter = w*h
+        inter = w * h
         # IoU = i / (area(a) + area(b) - i)
         rem_areas = torch.index_select(area, 0, idx)  # load remaining areas)
         union = (rem_areas - inter) + area[i]
-        IoU = inter/union  # store result in iou
+        IoU = inter / union  # store result in iou
         # keep only elements with an IoU <= overlap
         idx = idx[IoU.le(overlap)]
     return keep, count

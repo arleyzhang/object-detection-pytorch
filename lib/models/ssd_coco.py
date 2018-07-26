@@ -4,7 +4,7 @@ import torch.nn.functional as F
 from lib.layers import *
 
 
-class SSD(nn.Module):
+class SSD_COCO(nn.Module):
     """Single Shot Multibox Architecture
     The network is composed of a base VGG network followed by the
     added multibox conv layers.  Each multibox layer branches into
@@ -23,7 +23,7 @@ class SSD(nn.Module):
     """
 
     def __init__(self, phase, cfg, base):
-        super(SSD, self).__init__()
+        super(SSD_COCO, self).__init__()
         if phase != "train" and phase != "eval":
             raise Exception("ERROR: Input phase: {} not recognized".format(phase))
 
@@ -35,9 +35,9 @@ class SSD(nn.Module):
         self.out = None
 
         # SSD network
-        self.vgg = nn.ModuleList(base)
+        self.base = nn.ModuleList(base)
         # Layer learns to scale the l2 normalized features from conv4_3
-        self.L2Norm = L2Norm(512, 20)  # TODO automate this
+        self.norm = L2Norm(512, 20)  # TODO automate this
 
         extras = add_extras(extras_config['ssd'], base)
         head = multibox(base, extras, cfg['num_priors'], cfg['num_classes'])
@@ -75,14 +75,14 @@ class SSD(nn.Module):
 
         # apply vgg up to conv4_3 relu
         for k in range(23):  # TODO make it configurable
-            x = self.vgg[k](x)
+            x = self.base[k](x)
 
-        s = self.L2Norm(x)  # can replace batchnorm    nn.BatchNorm2d(x)#
+        s = self.norm(x)  # can replace batchnorm    nn.BatchNorm2d(x)#
         sources.append(s)
 
         # apply vgg up to fc7
-        for k in range(23, len(self.vgg)):
-            x = self.vgg[k](x)
+        for k in range(23, len(self.base)):
+            x = self.base[k](x)
         sources.append(x)
 
         # apply extra layers and cache source layer outputs

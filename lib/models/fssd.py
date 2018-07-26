@@ -2,10 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
-from layers import *
-from models import *
-from utils import Timer
-import os
+from lib.layers import *
 
 
 class FSSD(nn.Module):
@@ -38,7 +35,7 @@ class FSSD(nn.Module):
         self.norm = nn.BatchNorm2d(int(feature_layer[0][1][-1] / 2) * len(self.transforms), affine=True)
         self.softmax = nn.Softmax(dim=-1)
         if self.phase == 'test':
-            self.detect = Detect(self.num_classes, 0, 200, 0.01, 0.45)
+            self.detect = DetectOut(self.num_classes, 0, 200, 0.01, 0.45)
 
     def forward(self, x, phase='train'):
         sources, transformed, pyramids, loc, conf = [list() for _ in range(5)]

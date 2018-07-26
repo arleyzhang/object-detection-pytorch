@@ -1,33 +1,30 @@
 import torch
+import torch.nn as nn
 from torch.autograd import Variable
-from models import ssd, fssd, fpn
-from models import vgg
+from lib.models import *
 from lib.layers.functions.prior_box import PriorBoxSSD
 
-ssds_map = {
-    'ssd': ssd,
-    'fssd': fssd,
-    'fpn': fpn,
-}
 
-networks_map = {
-    'vgg16': vgg.vgg16,
-}
-
-priors_map = {
-    'ssd': PriorBoxSSD,
-}
+bases_list = ['vgg16']
+ssds_list = ['SSD', 'FSSD', 'FPN', 'SSD_COCO']
+priors_list = ['PriorBoxSSD']
 
 
-def create_model(phase, cfg):
-    prior = priors_map[cfg['prior_type']](cfg)
+def create(n, lst, **kwargs):
+    if n not in lst:
+        raise Exception("unkown type {}, possible: {}".format(n, str(lst)))
+    return eval('{}(**kwargs)'.format(n))
+
+
+def model_factory(phase, cfg):
+    prior = create(cfg['prior_type'], priors_list, cfg=cfg)
     cfg['num_priors'] = prior.num_priors
-    base = networks_map[cfg['base_model']]()  # vgg.vgg16
-    model = ssds_map[cfg['ssds_type']].build(phase, cfg, base)
+    base = create(cfg['base_model'], bases_list)
+    model = create(cfg['ssds_type'], ssds_list, phase=phase, cfg=cfg, base=base)
     layer_dims = get_layer_dims(model, cfg['image_size'][0], cfg['image_size'][1])
-    model.priors = prior.forward(layer_dims)
+    priors = prior.forward(layer_dims)
     # print('feature maps:', layer_dims)
-    return model, layer_dims
+    return model, priors
 
 
 def get_layer_dims(model, input_h, input_w):
@@ -52,9 +49,9 @@ def get_layer_dims(model, input_h, input_w):
 
 if __name__ == '__main__':
     from lib.data.config import ssd_voc_vgg as cfg
-    import torch.nn as nn
-    # net, layer_dims = create_model(phase='train', cfg=cfg)  # test ssd
-    cfg['ssds_type'] = 'fpn'
-    net, layer_dims = create_model(phase='train', cfg=cfg)  # test fpn
+    # net, layer_dims = model_factory(phase='train', cfg=cfg)  # test ssd
+    cfg['ssds_type'] = 'SSD'
+    net = model_factory(phase='train', cfg=cfg)  # test fpn
     # print(net)
     # print(layer_dims)
+

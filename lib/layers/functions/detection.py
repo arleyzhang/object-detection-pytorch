@@ -1,16 +1,15 @@
 import torch
 from torch.autograd import Function
-from ..box_utils import decode, nms
-from data import VARIANCE
+from lib.layers.box_utils import decode, nms
+from lib.data.config import ssd_voc_vgg as cfg  #TODO change this!
 
 
-class Detect(Function):
+class DetectOut(Function):
     """At test time, Detect is the final layer of SSD.  Decode location preds,
     apply non-maximum suppression to location predictions based on conf
     scores and threshold to a top_k number of output predictions for both
     confidence score and locations.
     """
-
     def __init__(self, num_classes, bkg_label, top_k, conf_thresh, nms_thresh):
         self.num_classes = num_classes
         self.background_label = bkg_label
@@ -20,7 +19,7 @@ class Detect(Function):
         if nms_thresh <= 0:
             raise ValueError('nms_threshold must be non negative.')
         self.conf_thresh = conf_thresh
-        self.variance = VARIANCE
+        self.variance = cfg['variance']
 
     def forward(self, loc_data, conf_data, prior_data):
         """
@@ -40,8 +39,7 @@ class Detect(Function):
 
         # Decode predictions into bboxes.
         for i in range(num):
-            # print('debug locate------', i, '\n', loc_data[i][-1], '\n', prior_data[-1])
-            decoded_boxes = decode(loc_data[i], prior_data, self.variance)  #
+            decoded_boxes = decode(loc_data[i], prior_data, self.variance)
             # For each class, perform nms
             conf_scores = conf_preds[i].clone()
 
@@ -52,6 +50,7 @@ class Detect(Function):
                     continue
                 l_mask = c_mask.unsqueeze(1).expand_as(decoded_boxes)
                 boxes = decoded_boxes[l_mask].view(-1, 4)
+                # should not cut number of boxes before nms
                 # idx of highest scoring and non-overlapping boxes per class
                 ids, count = nms(boxes, scores, self.nms_thresh, self.top_k)
                 output[i, cl, :count] = \

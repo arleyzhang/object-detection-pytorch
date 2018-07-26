@@ -231,6 +231,7 @@ def train():
         if args.tensorboard and not args.visdom and iteration != 0 and (iteration % epoch_size == 0):
             visualize_epoch(net, visualize_loader, priorbox, writer, epoch)
 
+
         for i, (images, targets, _, _, loc_t, conf_t) in enumerate(data_loader):
             timers['prepro_time'].toc()
             if images.size(0) < args.batch_size: continue

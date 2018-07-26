@@ -26,7 +26,7 @@ class FPN(nn.Module):
 
         self.softmax = nn.Softmax(dim=-1)
         if self.phase == 'test':  # TODO add to config
-            self.detect = Detect(self.num_classes, 0, 200, 0.01, 0.45)
+            self.detect = DetectOut(self.num_classes, 0, 200, 0.01, 0.45)
 
     def forward(self, x, phase='train'):
         sources, transformed, pyramids, loc, conf = [list() for _ in range(5)]
