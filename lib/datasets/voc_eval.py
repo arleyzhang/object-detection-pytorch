@@ -1,13 +1,12 @@
 import os
 import numpy as np
 import pickle
-
-from lib.data import VOC_ROOT
-from lib.data import VOC_CLASSES as labelmap
+from lib.datasets import VOC_CLASSES as labelmap
 import xml.etree.ElementTree as ET
+from lib.utils.config import cfg
 
-devkit_path = VOC_ROOT + 'VOC' + '2007'
-
+VOC_ROOT = cfg.DATASET.DATASET_DIR
+devkit_path = os.path.join(VOC_ROOT, 'VOC2007')
 annopath = os.path.join(VOC_ROOT, 'VOC2007', 'Annotations', '%s.xml')
 imgpath = os.path.join(VOC_ROOT, 'VOC2007', 'JPEGImages', '%s.jpg')
 imgsetpath = os.path.join(VOC_ROOT, 'VOC2007', 'ImageSets',

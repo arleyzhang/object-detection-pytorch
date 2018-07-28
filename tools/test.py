@@ -14,7 +14,7 @@ import torch.utils.data as data
 from ssd import build_ssd
 
 parser = argparse.ArgumentParser(description='Single Shot MultiBox Detection')
-parser.add_argument('--trained_model', default='../../data/weights/repul_ssd_VOC_20000.pth',
+parser.add_argument('--trained_model', default='../../datasets/weights/repul_ssd_VOC_20000.pth',
                     type=str, help='Trained state_dict file path to open')
 parser.add_argument('--save_folder', default='eval/', type=str,
                     help='Dir to save results')
@@ -86,7 +86,7 @@ def test_voc():
     net.load_state_dict(torch.load(args.trained_model))
     net.eval()
     print('Finished loading model!')
-    # load data
+    # load datasets
     testset = VOCDetection(args.voc_root, [('2007', 'test')], None, VOCAnnotationTransform())
     if args.cuda:
         net = net.cuda()

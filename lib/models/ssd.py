@@ -26,12 +26,11 @@ class SSD(nn.Module):
         super(SSD, self).__init__()
         if phase != "train" and phase != "eval":
             raise Exception("ERROR: Input phase: {} not recognized".format(phase))
-
         self.phase = phase
-        self.num_classes = cfg['num_classes']
+        self.num_classes = cfg.MODEL.NUM_CLASSES
         self.cfg = cfg
         # self.priors = None
-        self.image_size = cfg['image_size']
+        self.image_size = cfg.MODEL.IMAGE_SIZE
         self.out = None
 
         # SSD network
@@ -40,7 +39,7 @@ class SSD(nn.Module):
         self.L2Norm = L2Norm(512, 20)  # TODO automate this
 
         extras = add_extras(extras_config['ssd'], base)
-        head = multibox(base, extras, cfg['num_priors'], cfg['num_classes'])
+        head = multibox(base, extras, cfg.MODEL.NUM_PRIOR, cfg.MODEL.NUM_CLASSES)
 
         self.extras = nn.ModuleList(extras)
         self.loc = nn.ModuleList(head[0])
@@ -145,8 +144,3 @@ def multibox(base, extra_layers, num_priors, num_classes):
 extras_config = {
     'ssd': [256, 'S', 512, 128, 'S', 256, 128, 256, 128, 256],
 }
-
-#
-# def build(phase, cfg, base):
-#
-#     return SSD(phase, cfg, base, extras, head)

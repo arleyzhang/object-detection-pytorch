@@ -89,7 +89,7 @@ if __name__ == '__main__':
 
     net.eval()
     print('Finished loading model!')
-    # load data
+    # load datasets
     dataset = VOCDetection(voc_root, [('2007', 'test')],
                            BaseTransform(300, dataset_mean),
                            VOCAnnotationTransform(False))

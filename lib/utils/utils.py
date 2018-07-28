@@ -6,7 +6,7 @@ import numpy as np
 import torch
 from torch.autograd import Variable
 
-from lib.data.voc_eval import get_output_dir, evaluate_detections
+from lib.datasets.voc_eval import get_output_dir, evaluate_detections
 from lib.layers import DetectOut
 from lib.utils import visualize_utils
 
@@ -38,9 +38,13 @@ class Timer(object):
 
 class EvalBase(object):
     def __init__(self, data_loader, cfg):
-        self.detector = DetectOut(cfg['num_classes'], 0, 200, 0.01, 0.45)
+        # TODO this sepearation because the datasets parallel module
+        # does not accelearte DetectOut
+        self.detector = DetectOut(cfg.MODEL.NUM_CLASSES, 0, 200, 0.01, 0.45)
         self.data_loader = data_loader
         self.dataset = self.data_loader.dataset
+
+        print('datasets points number', len(self.dataset))
         self.name = self.dataset.name
         self.cfg = cfg
         self.results = None  # dict for voc and list for coco
@@ -50,13 +54,12 @@ class EvalBase(object):
     def result_init(self):
         raise NotImplementedError
 
-    def evaluate_stats(self, tb_writer):
+    def evaluate_stats(self, classes=None, tb_writer=None):
         return None
 
     def post_proc(self, det, img_idx, id):
         raise NotImplementedError
 
-    # @profile
     def validate(self, net, priors, use_cuda=True, tb_writer=None):
         print('start vali')
         img_idx = 0
@@ -117,7 +120,7 @@ class EvalBase(object):
 
         _t['misc'].toc(average=False)
         print(_t['im_detect'].total_time, _t['misc'].total_time)
-        self.evaluate_stats(tb_writer)
+        self.evaluate_stats(None, tb_writer)
 
     def visualize_box(self, images, targets, h, w, det, img_idx, tb_writer):
         det_ = det.cpu().numpy()
@@ -157,9 +160,11 @@ class EvalVOC(EvalBase):
     def __init__(self, data_loader, cfg):
         super(EvalVOC, self).__init__(data_loader, cfg)
         self.test_set = self.image_sets[0][1]
+        if cfg.DATASET.NUM_EVAL_PICS > 0:
+            raise Exception("not support voc")
 
     def result_init(self):
-        self.results = [[[] for _ in range(len(self.dataset))] for _ in range(self.cfg['num_classes'])]
+        self.results = [[[] for _ in range(len(self.dataset))] for _ in range(self.cfg.MODEL.NUM_CLASSES)]
 
     def post_proc(self, det, img_idx, id):
         # manually broadcast
@@ -175,7 +180,7 @@ class EvalVOC(EvalBase):
             img_idx += 1
         return img_idx
 
-    def evaluate_stats(self, tb_writer):
+    def evaluate_stats(self, classes=None, tb_writer=None):
         output_dir = get_output_dir('ssd300_120000', self.test_set)
         det_file = os.path.join(output_dir, 'detections.pkl')
         with open(det_file, 'wb') as f:
@@ -189,33 +194,46 @@ class EvalVOC(EvalBase):
 class EvalCOCO(EvalBase):
     def __init__(self, data_loader, cfg):
         super(EvalCOCO, self).__init__(data_loader, cfg)
+        if cfg.DATASET.NUM_EVAL_PICS > 0:
+            self.dataset.ids = self.dataset.ids[:cfg.DATASET.NUM_EVAL_PICS]
 
     def result_init(self):
         self.results = []
 
     # @profile
     def post_proc(self, det, img_idx, id):
+        # x1, y1, x2, y2, score, image, cls, cocoid
         det[:, 2] -= det[:, 0]  # w
         det[:, 3] -= det[:, 1]  # h
+        # cocoid, x1, y1, x2, y2, score, cls
         det = det[:, [7, 0, 1, 2, 3, 4, 6]]
         det_ = det.cpu().numpy()
-        det__ = det_[det_[:, 5] > 0.5]
-        self.results.append(det__)
+        # det__ = det_[det_[:, 5] > 0.5]
+        self.results.append(det_)
         img_idx += id.shape[0]
         return img_idx
 
-    def evaluate_stats(self, tb_writer):
+    def evaluate_stats(self, classes=None, tb_writer=None):
         from pycocotools.cocoeval import COCOeval
         res = np.vstack(self.results)
+        for r in res:
+            r[6] = self.dataset.target_transform.inver_map[r[6]]
         coco = self.dataset.cocos[0]['coco']
         coco_pred = coco.loadRes(res)
         cocoEval = COCOeval(coco, coco_pred, 'bbox')
-        # cocoEval.params.imgIds = self.dataset.ids
-        # cocoEval.params.catIds = [24, 7, 5, 6]
+        cocoEval.params.imgIds = self.dataset.ids
         cocoEval.evaluate()
         cocoEval.accumulate()
         cocoEval.summarize()
-        # gts=coco.loadAnns(coco.getAnnIds(imgIds=self.dataset.ids,
-        #                                  catIds=coco.getCatIds()))
-        # dts=coco_pred.loadAnns(coco_pred.getAnnIds(imgIds=self.dataset.ids,
-        #                                            catIds=coco_pred.getCatIds()))
+
+        """
+        # show precision of each class
+        s = cocoEval.eval['precision'][0]
+        t = s[:, :, 0, 2]
+        m = np.mean(t[t>-1])
+        rc = []
+        for i in range(t.shape[1]):
+            r = t[:, i]
+            rc.append(np.mean(r[r>-1]))
+        print(rc)
+        """

@@ -6,29 +6,14 @@ import torch.utils.data as data
 import cv2
 from pycocotools.coco import COCO
 
-from lib.data.config import HOME
-from lib.data.det_dataset import DetDataset
+from lib.utils.config import cfg
+from lib.datasets.det_dataset import DetDataset
 
-COCO_ROOT = osp.join(HOME, 'data/coco/')
+# COCO_ROOT = osp.join(HOME, 'datasets/coco/')
 IMAGES = 'images'
 ANNOTATIONS = 'annotations'
 COCO_API = 'PythonAPI'
 INSTANCES_SET = 'instances_{}.json'
-COCO_CLASSES = ('person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus',
-                'train', 'truck', 'boat', 'traffic light', 'fire', 'hydrant',
-                'stop sign', 'parking meter', 'bench', 'bird', 'cat', 'dog',
-                'horse', 'sheep', 'cow', 'elephant', 'bear', 'zebra',
-                'giraffe', 'backpack', 'umbrella', 'handbag', 'tie',
-                'suitcase', 'frisbee', 'skis', 'snowboard', 'sports ball',
-                'kite', 'baseball bat', 'baseball glove', 'skateboard',
-                'surfboard', 'tennis racket', 'bottle', 'wine glass', 'cup',
-                'fork', 'knife', 'spoon', 'bowl', 'banana', 'apple',
-                'sandwich', 'orange', 'broccoli', 'carrot', 'hot dog', 'pizza',
-                'donut', 'cake', 'chair', 'couch', 'potted plant', 'bed',
-                'dining table', 'toilet', 'tv', 'laptop', 'mouse', 'remote',
-                'keyboard', 'cell phone', 'microwave oven', 'toaster', 'sink',
-                'refrigerator', 'book', 'clock', 'vase', 'scissors',
-                'teddy bear', 'hair drier', 'toothbrush')
 
 """
 coco minival urls
@@ -54,7 +39,8 @@ class COCOAnnotationTransform(object):
     """
 
     def __init__(self, norm_box=True):
-        self.label_map = get_label_map(osp.join(COCO_ROOT, 'coco_labels.txt'))
+        self.label_map = get_label_map(osp.join(cfg.ROOT_DIR, 'lib', 'datasets', 'coco_labels.txt'))
+        self.inver_map = {v: k for k, v in self.label_map.items()}
         self.norm_box = norm_box
 
     def __call__(self, target, width, height):
@@ -134,17 +120,19 @@ class COCODetection(DetDataset):
 
 
 def test_loader():
-    # TODO: a strange bug: data loader hangs in cpu mode
-    os.environ["CUDA_VISIBLE_DEVICES"] = "0"  # Specified GPUs range
-    # ('val2014', 'minival2014','valminusminival2014', 'train2014')
-    dataset = COCODetection(COCO_ROOT, ('val2014',),
-                               SSDAugmentation((300, 300), dataset_mean, use_base=True),
-                               COCOAnnotationTransform())
-    data_loader = data.DataLoader(dataset, batch_size=24, num_workers=24, shuffle=False,
-                                  collate_fn=detection_collate, pin_memory=True)
+    # TODO: a strange bug: datasets loader hangs in cpu mode
+    os.environ["CUDA_VISIBLE_DEVICES"] = cfg.CUDA_VISIBLE_DEVICES
+    cfg_path = osp.join(cfg.CFG_ROOT, 'coco.yml')
+    merge_cfg_from_file(cfg_path)
 
+    dataset = COCODetection(cfg.DATASET.DATASET_DIR, cfg.DATASET.TEST_SETS,
+                           SSDAugmentation(cfg.DATASET.IMAGE_SIZE, dataset_mean, use_base=True),
+                            COCOAnnotationTransform())
+    loader = data.DataLoader(dataset, batch_size=cfg.DATASET.EVAL_BATCH_SIZE,
+                                  num_workers=cfg.DATASET.NUM_WORKERS, shuffle=False,
+                                  collate_fn=detection_collate, pin_memory=True)
     print(len(dataset))
-    for i, (images, targets) in enumerate(data_loader):
+    for i, (images, targets, extra) in enumerate(loader):
         print(i)
 
 
@@ -152,12 +140,10 @@ def test_vis():
     dataset = COCODetection(COCO_ROOT, ('valminusminival2014',),
                                SSDAugmentation((300, 300), dataset_mean, use_base=True),
                                COCOAnnotationTransform())
+
     from lib.utils.visualize_utils import TBWriter
-    from tensorboardX import SummaryWriter
-    log_dir = './experiments/models/ssd_voc/test_vis_coco'
-    writer = SummaryWriter(log_dir=log_dir)
-    cfg = {'vis_list': [3, 4, 5, 6, 8]}
-    tb_writer = TBWriter(writer, cfg)
+    log_dir = './experiments/models/ssd_voc/test_vis_coco_'
+    tb_writer = TBWriter(log_dir, {'epoch': 50, 'vis_list': [3, 4, 5, 6, 8]})
 
     # import random
     # img_idx = random.randint(0, len(dataset)-1)
@@ -172,10 +158,11 @@ def test_vis():
 
 
 if __name__ == '__main__':
-    from data import detection_collate
-    from utils import SSDAugmentation
-
+    from lib.datasets import detection_collate
+    from lib.utils import SSDAugmentation
+    import os.path as osp
+    from lib.utils.config import merge_cfg_from_file
     type = 'test'
     dataset_mean = (104, 117, 123)
     test_loader()
-    test_vis()
+    # test_vis()

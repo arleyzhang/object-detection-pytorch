@@ -24,12 +24,12 @@ class PriorBoxBase(object):
 
     def __init__(self, cfg):
         super(PriorBoxBase, self).__init__()
-        self.image_size = cfg['image_size']
-        self._steps = cfg['steps']
+        self.image_size = cfg.MODEL.IMAGE_SIZE
+        self._steps = cfg.MODEL.STEPS
         self._cfg_list = []
         self._prior_cfg = {}
-        self._clip = cfg['clip']
-        self._variance = cfg['variance'] or [0.1, 0.2]
+        self._clip = cfg.MODEL.CLIP
+        self._variance = cfg.MODEL.VARIANCE
         for v in self._variance:
             if v <= 0:
                 raise ValueError('Variances must be greater than 0')
@@ -37,11 +37,11 @@ class PriorBoxBase(object):
     def _setup(self, cfg):
         num_feat = len(self._steps)
         for item in self._cfg_list:
-            if item not in cfg:
+            if item not in cfg.MODEL:
                 raise Exception("wrong anchor config!")
-            if len(cfg[item]) != num_feat and len(cfg[item]) != 0:
+            if len(cfg.MODEL[item]) != num_feat and len(cfg.MODEL[item]) != 0:
                 raise Exception("config {} length does not match step length!".format(item))
-            self._prior_cfg[item] = cfg[item]
+            self._prior_cfg[item] = cfg.MODEL[item]
 
     @property
     def num_priors(self):
@@ -114,14 +114,14 @@ class PriorBoxSSD(PriorBoxBase):
     def __init__(self, cfg):
         super(PriorBoxSSD, self).__init__(cfg)
         # self.image_size = cfg['image_size']
-        self._cfg_list = ['min_sizes', 'max_sizes', 'aspect_ratios']
-        self._flip = cfg['flip'] if 'flip' in cfg else True  # backward compatibility
+        self._cfg_list = ['MIN_SIZES', 'MAX_SIZES', 'ASPECT_RATIOS']
+        self._flip = cfg.MODEL.FLIP
         self._setup(cfg)
 
     def _create_prior(self, cx, cy, k):
         # as the original paper do
         prior = []
-        min_sizes = self._prior_cfg['min_sizes'][k]
+        min_sizes = self._prior_cfg['MIN_SIZES'][k]
         min_sizes = [min_sizes] if not isinstance(min_sizes, list) else min_sizes
         for ms in min_sizes:
             # min square
@@ -129,13 +129,13 @@ class PriorBoxSSD(PriorBoxBase):
             s_j = ms / self.image_size[1]
             prior += [cx, cy, s_j, s_i]
             # min max square
-            if len(self._prior_cfg['max_sizes']) != 0:
-                assert type(self._prior_cfg['max_sizes'][k]) is not list  # one max size per layer
-                s_i_prime = sqrt(s_i * (self._prior_cfg['max_sizes'][k] / self.image_size[0]))
-                s_j_prime = sqrt(s_j * (self._prior_cfg['max_sizes'][k] / self.image_size[1]))
+            if len(self._prior_cfg['MAX_SIZES']) != 0:
+                assert type(self._prior_cfg['MAX_SIZES'][k]) is not list  # one max size per layer
+                s_i_prime = sqrt(s_i * (self._prior_cfg['MAX_SIZES'][k] / self.image_size[0]))
+                s_j_prime = sqrt(s_j * (self._prior_cfg['MAX_SIZES'][k] / self.image_size[1]))
                 prior += [cx, cy, s_j_prime, s_i_prime]
             # rectangles by min and aspect ratio
-            for ar in self._prior_cfg['aspect_ratios'][k]:
+            for ar in self._prior_cfg['ASPECT_RATIOS'][k]:
                 prior += [cx, cy, s_j * sqrt(ar), s_i / sqrt(ar)]  # a vertical box
                 if self._flip:
                     prior += [cx, cy, s_j / sqrt(ar), s_i * sqrt(ar)]
@@ -192,13 +192,15 @@ def test_rectangle(cfg, tb_writer):
 
 if __name__ == '__main__':
     import copy
-    from lib.data.config import ssd_voc_vgg as cfg
-    from tensorboardX import SummaryWriter
+    # from lib.datasets.config import ssd_voc_vgg as cfg
+    # from lib.utils.visualize_utils import TBWriter
+    # log_dir = './experiments/models/ssd_voc/test_prior'
+    # tb_writer = TBWriter(log_dir, {'epoch': 50})
+    #
+    # test_no_vis(cfg, tb_writer)
+    # test_filp(cfg, tb_writer)
+    # test_rectangle(cfg, tb_writer)
+    print('haha')
+    from lib.utils.config import cfg
+    print(cfg)
 
-    log_dir = './experiments/models/ssd_voc/test'
-    writer = SummaryWriter(log_dir=log_dir)
-    tb_writer = TBWriter(writer)
-
-    test_no_vis(cfg, tb_writer)
-    test_filp(cfg, tb_writer)
-    test_rectangle(cfg, tb_writer)

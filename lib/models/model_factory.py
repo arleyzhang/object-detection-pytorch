@@ -17,21 +17,20 @@ def create(n, lst, **kwargs):
 
 
 def model_factory(phase, cfg):
-    prior = create(cfg['prior_type'], priors_list, cfg=cfg)
-    cfg['num_priors'] = prior.num_priors
-    base = create(cfg['base_model'], bases_list)
-    model = create(cfg['ssds_type'], ssds_list, phase=phase, cfg=cfg, base=base)
-    layer_dims = get_layer_dims(model, cfg['image_size'][0], cfg['image_size'][1])
+    prior = create(cfg.MODEL.PRIOR_TYPE, priors_list, cfg=cfg)
+    cfg.MODEL.NUM_PRIOR = prior.num_priors
+    base = create(cfg.MODEL.BASE, bases_list)
+    model = create(cfg.MODEL.SSD_TYPE, ssds_list, phase=phase, cfg=cfg, base=base)
+    layer_dims = get_layer_dims(model, cfg.MODEL.IMAGE_SIZE)
     priors = prior.forward(layer_dims)
-    # print('feature maps:', layer_dims)
-    return model, priors
+    return model, priors, layer_dims
 
 
-def get_layer_dims(model, input_h, input_w):
+def get_layer_dims(model, image_size):
     def forward_hook(self, input, output):
         """input: type tuple, output: type Variable"""
         # print('{} forward\t input: {}\t output: {}\t output_norm: {}'.format(
-        #     self.__class__.__name__, input[0].size(), output.data.size(), output.data.norm()))
+        #     self.__class__.__name__, input[0].size(), output.datasets.size(), output.datasets.norm()))
         dims.append([input[0].size()[2], input[0].size()[3]])  # h, w
 
     dims = []
@@ -41,17 +40,15 @@ def get_layer_dims(model, input_h, input_w):
             hook = layer.register_forward_hook(forward_hook)
             handles.append(hook)
 
-    input_size = (1, 3, input_h, input_w)
+    input_size = (1, 3, image_size[0], image_size[1])
     model(Variable(torch.randn(input_size)))
     [item.remove() for item in handles]
     return dims
 
 
 if __name__ == '__main__':
-    from lib.data.config import ssd_voc_vgg as cfg
-    # net, layer_dims = model_factory(phase='train', cfg=cfg)  # test ssd
-    cfg['ssds_type'] = 'SSD'
-    net = model_factory(phase='train', cfg=cfg)  # test fpn
-    # print(net)
-    # print(layer_dims)
-
+    from lib.utils.config import cfg
+    net, priors, layer_dims = model_factory(phase='train', cfg=cfg)
+    print(net)
+    print(priors)
+    print(layer_dims)

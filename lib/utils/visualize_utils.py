@@ -23,12 +23,13 @@ def draw_bbox(img, bbxs, color=(255, 255, 0), cfg=None):
             bbx[1] *= img.shape[0]
             bbx[2] *= img.shape[1]
             bbx[3] *= img.shape[0]
-        if len(bbx) == 5:  # ground truth
+        if len(bbx) <= 5:  # ground truth
             cv2.rectangle(img, (bbx[0], bbx[1]), (bbx[2], bbx[3]), (0, 0, 255), 2)
-            cv2.putText(img=img, text='{:d}'.format(int(bbx[4])),
-                        org=(bbx[0], int(bbx[1] + 20)),
-                        fontFace=cv2.FONT_HERSHEY_TRIPLEX, fontScale=0.8,
-                        color=(0, 0, 255), thickness=2)
+            if len(bbx) == 5:
+                cv2.putText(img=img, text='{:d}'.format(int(bbx[4])),
+                            org=(bbx[0], int(bbx[1] + 20)),
+                            fontFace=cv2.FONT_HERSHEY_TRIPLEX, fontScale=0.8,
+                            color=(0, 0, 255), thickness=2)
         elif len(bbx) > 6:  # prediction
             cv2.rectangle(img, (bbx[0], bbx[1]), (bbx[2], bbx[3]), color, 2)
             cv2.putText(img=img, text='{:d}_{:.3f}'.format(int(bbx[6]), bbx[4]),
@@ -45,9 +46,8 @@ def vis_img_box(img, boxes, resize, tb_writer):
         image = cv2.resize(image, (resize[1], resize[0]))
     if not isinstance(boxes, dict):
         boxes = {'box': boxes}
-    if isinstance(boxes, dict):
-        for key, color in zip(boxes.keys(), colors):
-            image = draw_bbox(image, boxes[key], color, tb_writer.cfg)
+    for key, color in zip(boxes.keys(), colors):
+        image = draw_bbox(image, boxes[key], color, tb_writer.cfg)
 
     cv2.imwrite('demo/temp.jpg', image)  # TODO solve this bug
     image = cv2.imread('demo/temp.jpg')
@@ -239,7 +239,7 @@ def viz_archor_strategy(writer, sizes, labels, epoch=0):
     ''' generate archor strategy for all classes
     '''
 
-    # merge all data into one 
+    # merge all datasets into one
     height, width, max_size, min_size, aspect_ratio, label = [list() for _ in range(6)]
     for _size, _label in zip(sizes[1:], labels[1:]):
         _height, _width, _max_size, _min_size, _aspect_ratio = [list() for _ in range(5)]

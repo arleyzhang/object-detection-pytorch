@@ -3,7 +3,7 @@ from __future__ import division
 import torch
 import torch.nn as nn
 from torch.autograd import Variable
-from lib.data import VARIANCE
+from lib.datasets import VARIANCE
 from ..box_utils import IoG, decode_new
 
 

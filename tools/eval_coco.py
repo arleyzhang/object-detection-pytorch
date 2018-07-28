@@ -146,7 +146,7 @@ def write_voc_results_file(all_boxes, dataset):
 
 
 def do_python_eval(output_dir, dataset, use_07=True):
-    cachedir = os.path.join(devkit_path, 'annotations_cache')#devkit_path=~/data/VOCdevkit/VOC2007/
+    cachedir = os.path.join(devkit_path, 'annotations_cache')#devkit_path=~/datasets/VOCdevkit/VOC2007/
     label_file = os.path.join(devkit_path, 'coco_labels.txt')
     aps = []
     # The PASCAL VOC metric changed in 2010
@@ -397,7 +397,7 @@ if __name__ == '__main__':
     net.load_state_dict(torch.load(args.trained_model)['state_dict'])   #model is dict{}
     net.eval()
     print('Finished loading model!')
-    # load data
+    # load datasets
     dataset = COCODetection(args.voc_root, ['minival'],
                                 BaseTransform(300, dataset_mean),
                                 COCOAnnotationTransform(False))

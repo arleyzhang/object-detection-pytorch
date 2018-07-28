@@ -9,8 +9,8 @@ import os.path as osp
 import cv2
 import torch.utils.data as data
 import xml.etree.ElementTree as ET
-from lib.data.config import *  # HOME, VARIANCE
-from lib.data.det_dataset import DetDataset
+from lib.datasets.config import *  # HOME, VARIANCE
+from lib.datasets.det_dataset import DetDataset
 
 # TODO move these global variable
 # 20 classes altogether
@@ -21,8 +21,8 @@ VOC_CLASSES = (
     'motorbike', 'person', 'pottedplant',
     'sheep', 'sofa', 'train', 'tvmonitor')
 
-# note: if you used download scripts in data/scripts, this should be right
-VOC_ROOT = osp.join(HOME, "data/VOCdevkit/")
+# note: if you used download scripts in datasets/scripts, this should be right
+# VOC_ROOT = osp.join(HOME, "datasets/VOCdevkit/")
 
 
 class VOCAnnotationTransform(object):
@@ -116,22 +116,25 @@ class VOCDetection(DetDataset):
 
 
 def test_loader():
-    # TODO: a strange bug: data loader hangs in cpu mode
+    from lib.utils.config import cfg
+    # TODO: a strange bug: datasets loader hangs in cpu mode
     os.environ["CUDA_VISIBLE_DEVICES"] = "0"  # Specified GPUs range
 
-    dataset = VOCDetection(VOC_ROOT, [('2007', 'test')],
-                           SSDAugmentation((300, 300), dataset_mean, use_base=True),
+    dataset = VOCDetection(cfg.DATASET.DATASET_DIR, cfg.DATASET.TEST_SETS,
+                           SSDAugmentation(cfg.DATASET.IMAGE_SIZE, cfg.DATASET.PIXEL_MEANS, use_base=True),
                            VOCAnnotationTransform())
-    data_loader = data.DataLoader(dataset, batch_size=32, num_workers=12, shuffle=False,
+    data_loader = data.DataLoader(dataset, batch_size=cfg.DATASET.TRAIN_BATCH_SIZE,
+                                  num_workers=cfg.DATASET.NUM_WORKERS, shuffle=False,
                                   collate_fn=detection_collate, pin_memory=True)
     for i, (images, targets, extra) in enumerate(data_loader):
         print(i)
         # print(targets)
 
 
-# TODO make this an API
 def test_vis():
-    dataset = VOCDetection(VOC_ROOT, [('2007', 'test')],
+    from lib.utils.config import cfg
+    # TODO make this an API
+    dataset = VOCDetection(cfg.DATASET.DATASET_DIR, [('2007', 'test')],
                            SSDAugmentation((300, 500), dataset_mean),
                            VOCAnnotationTransform())
     from lib.utils.visualize_utils import TBWriter
@@ -150,10 +153,10 @@ def test_vis():
 
 
 if __name__ == '__main__':
-    from lib.data import detection_collate
+    from lib.datasets import detection_collate
     from lib.utils import SSDAugmentation
 
     type = 'test'
     dataset_mean = (104, 117, 123)
-    # test_loader()
-    test_vis()
+    test_loader()
+    # test_vis()

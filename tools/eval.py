@@ -157,7 +157,7 @@ def write_voc_results_file(all_boxes, dataset):
 
 def do_python_eval(output_dir='output', use_07=True):
     writer = SummaryWriter(log_dir=args.log_dir)
-    cachedir = os.path.join(devkit_path, 'annotations_cache')  # devkit_path=~/data/VOCdevkit/VOC2007/
+    cachedir = os.path.join(devkit_path, 'annotations_cache')  # devkit_path=~/datasets/VOCdevkit/VOC2007/
     aps = []
     # The PASCAL VOC metric changed in 2010
     use_07_metric = use_07
@@ -432,7 +432,7 @@ if __name__ == '__main__':
     net.load_state_dict(torch.load(args.trained_model)['state_dict'])  # model is dict{}
     net.eval()
     print('Finished loading model!')
-    # load data
+    # load datasets
     dataset = VOCDetection(args.voc_root, [('2007', set_type)],
                            BaseTransform(300, dataset_mean),
                            VOCAnnotationTransform(False))  # TODO extra parameter

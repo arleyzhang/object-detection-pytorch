@@ -3,32 +3,14 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
-from lib.data import VARIANCE
-from ..box_utils import match_ssd, log_sum_exp
+from lib.datasets import VARIANCE
+# from ..box_utils import match_ssd, log_sum_exp
+
+
+"""
 
 
 class MultiBoxLossSSD(nn.Module):
-    """SSD Weighted Loss Function
-    Compute Targets:
-        1) Produce Confidence Target Indices by matching  ground truth boxes
-           with (default) 'priorboxes' that have jaccard index > threshold parameter
-           (default threshold: 0.5).
-        2) Produce localization target by 'encoding' variance into offsets of ground
-           truth boxes and their matched  'priorboxes'.
-        3) Hard negative mining to filter the excessive number of negative examples
-           that comes with using a large number of default bounding boxes.
-           (default negative:positive ratio 3:1)
-    Objective Loss:
-        L(x,c,l,g) = (Lconf(x, c) + αLloc(x,l,g)) / N
-        Where, Lconf is the CrossEntropy Loss and Lloc is the SmoothL1 Loss
-        weighted by α which is set to 1 by cross val.
-        Args:
-            c: class confidences,
-            l: predicted boxes,
-            g: ground truth boxes
-            N: number of matched default boxes
-        See: https://arxiv.org/pdf/1512.02325.pdf for more details.
-    """
     # criterion = MultiBoxLoss(cfg['num_classes'], 0.5, True, 0, True, 3, 0.5,
     #                             False, args.cuda)
     def __init__(self, num_classes, overlap_thresh, prior_for_matching,
@@ -49,17 +31,6 @@ class MultiBoxLossSSD(nn.Module):
         self.variance = VARIANCE
 
     def forward(self, predictions, targets, loc_t=None, conf_t=None):
-        """Multibox Loss
-        Args:
-            predictions (tuple): A tuple containing loc preds, conf preds,
-            and prior boxes from SSD net.
-                conf shape: torch.size(batch_size,num_priors,num_classes)
-                loc shape: torch.size(batch_size,num_priors,4)
-                priors shape: torch.size(num_priors,4)
-
-            targets (tensor): Ground truth boxes and labels for a batch,
-                shape: [batch_size,num_objs,5] (last idx is the label).
-        """
         loc_data, conf_data, priors = predictions
         num = loc_data.size(0)
         priors = priors[:loc_data.size(1), :]   #Shape(num_priors,4)
@@ -72,7 +43,7 @@ class MultiBoxLossSSD(nn.Module):
             conf_t = torch.LongTensor(num, num_priors)
 
             for idx in range(num):
-                #print('debug ----', idx, '\n', targets[idx][:, -1].data[0])
+                #print('debug ----', idx, '\n', targets[idx][:, -1].datasets[0])
                 if targets[idx][:, -1].data[0] < 0:    #target is -1, no objs
                     loc_t[idx] = torch.Tensor([[-1, -1, -1, -1]] * num_priors)
                     conf_t[idx] = torch.LongTensor([0] * num_priors)    #is background
@@ -130,3 +101,4 @@ class MultiBoxLossSSD(nn.Module):
         loss_l /= N
         loss_c /= N
         return self.loc_weight * loss_l, loss_c
+"""

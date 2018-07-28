@@ -5,7 +5,7 @@ import time
 
 def point_form(boxes):
     """ Convert prior_boxes to (xmin, ymin, xmax, ymax)
-    representation for comparison to point form ground truth data.
+    representation for comparison to point form ground truth datasets.
     Args:
         boxes: (tensor) center-size default boxes from priorbox layers.
     Return:
@@ -17,7 +17,7 @@ def point_form(boxes):
 
 def center_size(boxes):
     """ Convert prior_boxes to (cx, cy, w, h)
-    representation for comparison to center-size form ground truth data.
+    representation for comparison to center-size form ground truth datasets.
     Args:
         boxes: (tensor) point_form boxes
     Return:
@@ -89,9 +89,22 @@ def IoG(box_a, box_b):
     G = (box_a[:, 2] - box_a[:, 0]) * (box_a[:, 3] - box_a[:, 1])
     return I / G
 
-def match_ssd(threshold, truths, priors, variances, labels, loc_t, conf_t, idx):
-    """
-    details to see match 
+def match(threshold, truths, priors, variances, labels, loc_t, conf_t, idx):
+    """Match each prior box with the ground truth box of the highest jaccard
+    overlap, encode the bounding boxes, then return the matched indices
+    corresponding to both confidence and location preds.
+    Args:
+        threshold: (float) The overlap threshold used when mathing boxes.
+        truths: (tensor) Ground truth boxes, Shape: [num_obj, num_priors].
+        priors: (tensor) Prior boxes from priorbox layers, Shape: [n_priors,4].
+        variances: (tensor) Variances corresponding to each prior coord,
+            Shape: [num_priors, 4].
+        labels: (tensor) All the class labels for the image, Shape: [num_obj].
+        loc_t: (tensor) Tensor to be filled w/ endcoded location targets.
+        conf_t: (tensor) Tensor to be filled w/ matched indices for conf preds.
+        idx: (int) current batch index
+    Return:
+        The matched indices corresponding to 1)location and 2)confidence preds.
     """
     # jaccard index
     overlaps = jaccard(
@@ -119,7 +132,7 @@ def match_ssd(threshold, truths, priors, variances, labels, loc_t, conf_t, idx):
     loc_t[idx] = loc    # [num_priors,4] encoded offsets to learn
     conf_t[idx] = conf  # [num_priors] top class label for each prior
 
-def match(threshold, predicts, truths, priors, variances, labels, loc_t, loc_g, conf_t, idx):
+def match_rep(threshold, predicts, truths, priors, variances, labels, loc_t, loc_g, conf_t, idx):
     """Match each prior box with the ground truth box of the highest jaccard
     overlap, encode the bounding boxes, then return the matched indices
     corresponding to both confidence and location preds.
@@ -262,6 +275,7 @@ def log_sum_exp(x):
 # Original author: Francisco Massa:
 # https://github.com/fmassa/object-detection.torch
 # Ported to PyTorch by Max deGroot (02/01/2017)
+# @profile
 def nms(boxes, scores, overlap=0.5, top_k=200):
     """Apply non-maximum suppression at test time to avoid detecting too many
     overlapping bounding boxes for a given object.
@@ -273,7 +287,7 @@ def nms(boxes, scores, overlap=0.5, top_k=200):
     Return:
         The indices of the kept boxes with respect to num_priors.
     """
-    # scores = scores.data
+    # scores = scores.datasets
     keep = scores.new(scores.size(0)).zero_().long()
     if boxes.numel() == 0:
         return keep

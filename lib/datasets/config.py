@@ -3,7 +3,7 @@ import os.path
 # cv2.setNumThreads(0)  # pytorch issue 1355: possible deadlock in dataloader
 
 # gets home dir cross platform
-# TODO used in lib/data, delete it
+# TODO used in lib/datasets, delete it
 HOME = os.path.expanduser("~")
 
 # for making bounding boxes pretty
@@ -49,8 +49,8 @@ ssd_coco_vgg = {
     'image_size': [300, 300],  # [H, W]
     'min_dim': 300,
     'steps': [8, 16, 32, 64, 100, 300],
-    'min_sizes': [21, 45, 99, 153, 207, 261],
-    'max_sizes': [45, 99, 153, 207, 261, 315],
+    'min_sizes': [30, 60, 111, 162, 213, 264],
+    'max_sizes': [60, 111, 162, 213, 264, 315],
     'aspect_ratios': [[2, 3], [2, 3], [2, 3], [2, 3], [2], [2]],
     'variance': [0.1, 0.2],
     'clip': True,

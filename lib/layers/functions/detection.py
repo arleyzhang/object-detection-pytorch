@@ -1,7 +1,7 @@
 import torch
 from torch.autograd import Function
 from lib.layers.box_utils import decode, nms
-from lib.data.config import ssd_voc_vgg as cfg  #TODO change this!
+from lib.datasets.config import ssd_voc_vgg as cfg  #TODO change this!
 
 
 class DetectOut(Function):
@@ -21,6 +21,7 @@ class DetectOut(Function):
         self.conf_thresh = conf_thresh
         self.variance = cfg['variance']
 
+    # @profile
     def forward(self, loc_data, conf_data, prior_data):
         """
         Args:

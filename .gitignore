@@ -144,6 +144,9 @@ read*.py
 ####### end lei
 
 # ----by Sun Zhicheng----
+# dataset dir
+data/
+
 # files enough for reimplementation
 jobs/
 

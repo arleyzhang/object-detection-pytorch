@@ -255,7 +255,7 @@ def train():
             
             #record time
             # timers['prepro_time'].tic()
-            # # load train data
+            # # load train datasets
             # try:
             #     images, targets, _, _ = next(batch_iterator)
             # except StopIteration:
