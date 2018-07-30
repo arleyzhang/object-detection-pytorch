@@ -142,7 +142,7 @@ def test_vis():
                                COCOAnnotationTransform())
 
     from lib.utils.visualize_utils import TBWriter
-    log_dir = './experiments/models/ssd_voc/test_vis_coco_'
+    log_dir = './jobs/models/ssd_voc/test_vis_coco_'
     tb_writer = TBWriter(log_dir, {'epoch': 50, 'vis_list': [3, 4, 5, 6, 8]})
 
     # import random

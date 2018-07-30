@@ -1,7 +1,6 @@
 import torch
 from torch.autograd import Function
 from lib.layers.box_utils import decode, nms
-from lib.datasets.config import ssd_voc_vgg as cfg  #TODO change this!
 
 
 class DetectOut(Function):
@@ -10,7 +9,8 @@ class DetectOut(Function):
     scores and threshold to a top_k number of output predictions for both
     confidence score and locations.
     """
-    def __init__(self, num_classes, bkg_label, top_k, conf_thresh, nms_thresh):
+    def __init__(self, num_classes, bkg_label, top_k,
+                 conf_thresh, nms_thresh, variance):
         self.num_classes = num_classes
         self.background_label = bkg_label
         self.top_k = top_k
@@ -19,7 +19,7 @@ class DetectOut(Function):
         if nms_thresh <= 0:
             raise ValueError('nms_threshold must be non negative.')
         self.conf_thresh = conf_thresh
-        self.variance = cfg['variance']
+        self.variance = variance
 
     # @profile
     def forward(self, loc_data, conf_data, prior_data):

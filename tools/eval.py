@@ -57,7 +57,7 @@ parser.add_argument('--voc_root', default=VOC_ROOT,
                     help='Location of VOC root directory')
 parser.add_argument('--cleanup', default=True, type=str2bool,
                     help='Cleanup and remove results files following eval')
-parser.add_argument('--log_dir', default='./experiments/models/ssd_voc', type=str,
+parser.add_argument('--log_dir', default='./jobs/models/ssd_voc', type=str,
                     help='tensorboard log_dir')
 
 args = parser.parse_args()

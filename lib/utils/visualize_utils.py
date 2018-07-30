@@ -64,10 +64,10 @@ def viz_pr_curve(res, tb_writer):
     :param res: tuple of (cls, ap, prec, rec)
     :param tb_writer: TBWriter
     """
-    epoch = tb_writer.cfg['epoch'] if 'epoch' in tb_writer.cfg else 0
-    print(epoch)
+    iter = tb_writer.cfg['iteration'] if 'iteration' in tb_writer.cfg else 0
+    phase = tb_writer.cfg['phase'] if 'phase' in tb_writer.cfg else 'eval'
     for cls, ap, prec, rec in res:
-        tb_writer.writer.add_scalar('AP/{}'.format(cls), ap, epoch)
+        tb_writer.writer.add_scalar('{}/{}'.format(phase, cls), ap, iter)
         num_thresholds = min(500, len(prec))
         if num_thresholds != len(prec):
             gap = int(len(prec) / num_thresholds)
@@ -84,7 +84,7 @@ def viz_pr_curve(res, tb_writer):
             false_negative_counts=-np.ones(num_thresholds),
             precision=prec,
             recall=rec,
-            global_step=epoch,
+            global_step=iter,
             num_thresholds=num_thresholds
         )
 

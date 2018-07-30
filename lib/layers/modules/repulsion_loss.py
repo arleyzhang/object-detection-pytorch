@@ -3,7 +3,7 @@ from __future__ import division
 import torch
 import torch.nn as nn
 from torch.autograd import Variable
-from lib.datasets import VARIANCE
+# from lib.datasets import VARIANCE
 from ..box_utils import IoG, decode_new
 
 
@@ -12,7 +12,7 @@ class RepulsionLoss(nn.Module):
     def __init__(self, sigma=0., use_cuda=True):
         super(RepulsionLoss, self).__init__()
         self.use_cuda = use_cuda
-        self.variance = VARIANCE
+        self.variance = [0.1, 0.2]
 
         self.sigma = Variable(torch.FloatTensor([sigma]), requires_grad=False)
 

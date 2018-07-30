@@ -34,7 +34,7 @@ class SSD(nn.Module):
         self.out = None
 
         # SSD network
-        self.vgg = nn.ModuleList(base)
+        self.base = nn.ModuleList(base)
         # Layer learns to scale the l2 normalized features from conv4_3
         self.L2Norm = L2Norm(512, 20)  # TODO automate this
 
@@ -74,14 +74,14 @@ class SSD(nn.Module):
 
         # apply vgg up to conv4_3 relu
         for k in range(23):  # TODO make it configurable
-            x = self.vgg[k](x)
+            x = self.base[k](x)
 
         s = self.L2Norm(x)  # can replace batchnorm    nn.BatchNorm2d(x)#
         sources.append(s)
 
         # apply vgg up to fc7
-        for k in range(23, len(self.vgg)):
-            x = self.vgg[k](x)
+        for k in range(23, len(self.base)):
+            x = self.base[k](x)
         sources.append(x)
 
         # apply extra layers and cache source layer outputs

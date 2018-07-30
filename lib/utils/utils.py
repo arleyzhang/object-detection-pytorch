@@ -1,13 +1,15 @@
 import os
+import os.path as osp
 import pickle
 import time
 import numpy as np
 
 import torch
 from torch.autograd import Variable
+from torch.backends import cudnn
 
 from lib.datasets.voc_eval import get_output_dir, evaluate_detections
-from lib.layers import DetectOut
+from lib.layers.functions import DetectOut
 from lib.utils import visualize_utils
 
 
@@ -36,38 +38,73 @@ class Timer(object):
             return self.diff
 
 
+def setup_cuda(cfg, use_cuda, cuda_devices=None):
+    # set GPUs
+    os.environ["CUDA_VISIBLE_DEVICES"] = cfg.CUDA_VISIBLE_DEVICES \
+        if cuda_devices is None else cuda_devices
+    # for profile
+    os.environ["CUDA_LAUNCH_BLOCKING"] = cfg.CUDA_LAUNCH_BLOCKING
+    if torch.cuda.is_available():
+        if use_cuda:
+            torch.set_default_tensor_type('torch.cuda.FloatTensor')
+            cudnn.deterministic = True
+            # cudnn.benchmark = False
+        else:
+            print("WARNING: It looks like you have a CUDA device, but aren't " +
+                  "using CUDA.")
+            torch.set_default_tensor_type('torch.FloatTensor')
+    else:
+        torch.set_default_tensor_type('torch.FloatTensor')
+
+
+def create_if_not_exist(names, warn=True):
+    if not isinstance(names, list):
+        names = [names]
+    for name in names:
+        if not osp.exists(name):  # snapshot and save_model
+            os.mkdir(name)
+        elif warn:
+            print('\033[91m' + 'folder already exist! ' + '\033[0m')
+            time.sleep(1)
+
+
 class EvalBase(object):
     def __init__(self, data_loader, cfg):
-        # TODO this sepearation because the datasets parallel module
-        # does not accelearte DetectOut
-        self.detector = DetectOut(cfg.MODEL.NUM_CLASSES, 0, 200, 0.01, 0.45)
+        self.detector = DetectOut(cfg.MODEL.NUM_CLASSES,
+                                  0, 200, 0.01, 0.45, cfg.MODEL.VARIANCE)
         self.data_loader = data_loader
         self.dataset = self.data_loader.dataset
-
-        print('datasets points number', len(self.dataset))
         self.name = self.dataset.name
         self.cfg = cfg
         self.results = None  # dict for voc and list for coco
         self.image_sets = self.dataset.image_sets
-        # self.test_set = osp.join(self.name, str(self.dataset.image_sets))
 
-    def result_init(self):
+    def reset_results(self):
         raise NotImplementedError
 
-    def evaluate_stats(self, classes=None, tb_writer=None):
-        return None
+    def convert_ssd_result(self, det, img_idx):
+        """
+        :param det:
+        :param img_idx:
+        :return: [xmin, ymin, xmax, ymax, score, image, cls, (cocoid)]
+        """
+        raise NotImplementedError
 
     def post_proc(self, det, img_idx, id):
         raise NotImplementedError
 
+    def evaluate_stats(self, classes=None, tb_writer=None):
+        return NotImplementedError
+
+    # @profile
     def validate(self, net, priors, use_cuda=True, tb_writer=None):
-        print('start vali')
+        print('start evaluation')
+        self.reset_results()
         img_idx = 0
         _t = {'im_detect': Timer(), 'misc': Timer()}
         _t['misc'].tic()
-        self.result_init()
         for batch_idx, (images, targets, extra) in enumerate(self.data_loader):
-            print('im', img_idx)
+            print('processed image', img_idx)
             if use_cuda:
                 images = Variable(images.cuda(), volatile=True)
                 extra = extra.cuda()
@@ -87,40 +124,15 @@ class EvalBase(object):
             det[:, :, :, 3] *= w  # xmax
             det[:, :, :, 2] *= h  # ymin
             det[:, :, :, 4] *= h  # ymax
-
-            # append image id and class to the detection results
-            id = torch.arange(0, det.shape[0]).unsqueeze(-1).expand(list(det.shape[:2])) \
-                .unsqueeze(-1).expand(list(det.shape[:3])).unsqueeze(-1)
-            cls = torch.arange(0, det.shape[1]).expand(list(det.shape[:2])).unsqueeze(-1) \
-                .expand(list(det.shape[:3])).unsqueeze(-1)
-            if self.name == 'MS COCO':
-                coco_id = torch.Tensor(self.dataset.ids[img_idx: img_idx + det.shape[0]])
-                coco_id = coco_id.unsqueeze(-1).expand(list(det.shape[:2])) \
-                    .unsqueeze(-1).expand(list(det.shape[:3])).unsqueeze(-1)
-                det = torch.cat((det, id, cls, coco_id), 3)
-            elif self.name == 'VOC0712':
-                det = torch.cat((det, id, cls), 3)
-            else:
-                raise Exception("wrong dataset name")
-            mymask = det[:, :, :, 0].gt(0.).unsqueeze(-1).expand(det.size())
-
-            if self.name == 'MS COCO':
-                det = torch.masked_select(det, mymask).view(-1, 8)
-                # xmin, ymin, xmax, ymax, score, image, cls, cocoid
-                det = det[:, [1, 2, 3, 4, 0, 5, 6, 7]]
-                # det[:, [4]] += 1
-            elif self.name == 'VOC0712':
-                det = torch.masked_select(det, mymask).view(-1, 7)
-                # xmin, ymin, xmax, ymax, score, image, cls
-                det = det[:, [1, 2, 3, 4, 0, 5, 6]]
-            if tb_writer is not None:
+            det, id = self.convert_ssd_result(det, img_idx)
+            # the format is now xmin, ymin, xmax, ymax, score, image, cls, (cocoid)
+            if tb_writer is not None and tb_writer.cfg['show_test_image']:
                 self.visualize_box(images, targets, h, w, det, img_idx, tb_writer)
-
             img_idx = self.post_proc(det, img_idx, id)
 
         _t['misc'].toc(average=False)
-        print(_t['im_detect'].total_time, _t['misc'].total_time)
-        self.evaluate_stats(None, tb_writer)
+        # print(_t['im_detect'].total_time, _t['misc'].total_time)
+        return self.evaluate_stats(None, tb_writer)
 
     def visualize_box(self, images, targets, h, w, det, img_idx, tb_writer):
         det_ = det.cpu().numpy()
@@ -130,7 +142,7 @@ class EvalBase(object):
         for idx in range(len(images)):
             img = images[idx].copy()
             img = img[:, :, (2, 1, 0)]
-            img += np.array((104., 117., 123.), dtype=np.float32)
+            img += np.array((104., 117., 123.), dtype=np.float32)  # TODO cfg
 
             det__ = det_[det_[:, 5] == idx]
             w_ = w[idx, :].cpu().numpy()
@@ -141,7 +153,7 @@ class EvalBase(object):
             det__[:, 0:4:2] = det__[:, 0:4:2] / w_ * w_r
             det__[:, 1:4:2] = det__[:, 1:4:2] / h_ * h_r
 
-            t = targets[idx].numpy()
+            t = targets[idx].numpy()  # ground truth
             t[:, 0:4:2] = t[:, 0:4:2] * w_r
             t[:, 1:4:2] = t[:, 1:4:2] * h_r
             t[:, 4] += 1  # TODO because of the traget transformer
@@ -162,12 +174,26 @@ class EvalVOC(EvalBase):
         self.test_set = self.image_sets[0][1]
         if cfg.DATASET.NUM_EVAL_PICS > 0:
             raise Exception("not support voc")
+        print('eval img num', len(self.dataset))
 
-    def result_init(self):
-        self.results = [[[] for _ in range(len(self.dataset))] for _ in range(self.cfg.MODEL.NUM_CLASSES)]
+    def reset_results(self):
+        self.results = [[[] for _ in range(len(self.dataset))]
+                        for _ in range(self.cfg.MODEL.NUM_CLASSES)]
+
+    def convert_ssd_result(self, det, img_idx):
+        # append image id and class to the detection results by manually broadcasting
+        id = torch.arange(0, det.shape[0]).unsqueeze(-1).expand(list(det.shape[:2])) \
+            .unsqueeze(-1).expand(list(det.shape[:3])).unsqueeze(-1)
+        cls = torch.arange(0, det.shape[1]).expand(list(det.shape[:2])).unsqueeze(-1) \
+            .expand(list(det.shape[:3])).unsqueeze(-1)
+        det = torch.cat((det, id, cls), 3)
+        mymask = det[:, :, :, 0].gt(0.).unsqueeze(-1).expand(det.size())
+        det = torch.masked_select(det, mymask).view(-1, 7)
+        # xmin, ymin, xmax, ymax, score, image, cls
+        det = det[:, [1, 2, 3, 4, 0, 5, 6]]
+        return det, id
 
     def post_proc(self, det, img_idx, id):
-        # manually broadcast
         det = det.cpu().numpy()
         # det_tensors.append(det)
         for b_idx in range(id.shape[0]):
@@ -186,9 +212,10 @@ class EvalVOC(EvalBase):
         with open(det_file, 'wb') as f:
             pickle.dump(self.results, f, pickle.HIGHEST_PROTOCOL)
         print('Evaluating detections')
-        res = evaluate_detections(self.results, output_dir, self.data_loader.dataset, test_set=self.test_set)
-        if tb_writer is not None:
+        res, mAP = evaluate_detections(self.results, output_dir, self.data_loader.dataset, test_set=self.test_set)
+        if tb_writer is not None and tb_writer.cfg['show_pr_curve']:
             visualize_utils.viz_pr_curve(res, tb_writer)
+        return res, [mAP]
 
 
 class EvalCOCO(EvalBase):
@@ -196,9 +223,28 @@ class EvalCOCO(EvalBase):
         super(EvalCOCO, self).__init__(data_loader, cfg)
         if cfg.DATASET.NUM_EVAL_PICS > 0:
             self.dataset.ids = self.dataset.ids[:cfg.DATASET.NUM_EVAL_PICS]
+        print('eval img num', len(self.dataset))
 
-    def result_init(self):
+    def reset_results(self):
         self.results = []
+
+    def convert_ssd_result(self, det, img_idx):
+        # append image id and class to the detection results by manually broadcasting
+        id = torch.arange(0, det.shape[0]).unsqueeze(-1).expand(list(det.shape[:2])) \
+            .unsqueeze(-1).expand(list(det.shape[:3])).unsqueeze(-1)
+        cls = torch.arange(0, det.shape[1]).expand(list(det.shape[:2])).unsqueeze(-1) \
+            .expand(list(det.shape[:3])).unsqueeze(-1)
+
+        coco_id = torch.Tensor(self.dataset.ids[img_idx: img_idx + det.shape[0]])
+        coco_id = coco_id.unsqueeze(-1).expand(list(det.shape[:2])) \
+            .unsqueeze(-1).expand(list(det.shape[:3])).unsqueeze(-1)
+        det = torch.cat((det, id, cls, coco_id), 3)
+
+        mymask = det[:, :, :, 0].gt(0.).unsqueeze(-1).expand(det.size())
+        det = torch.masked_select(det, mymask).view(-1, 8)
+        # xmin, ymin, xmax, ymax, score, image, cls, cocoid
+        det = det[:, [1, 2, 3, 4, 0, 5, 6, 7]]
+        return det, id
 
     # @profile
     def post_proc(self, det, img_idx, id):
@@ -225,7 +271,11 @@ class EvalCOCO(EvalBase):
         cocoEval.evaluate()
         cocoEval.accumulate()
         cocoEval.summarize()
-
+        res = cocoEval.eval
+        ap05 = res['precision'][0, :, :, 0, 2]
+        map05 = np.mean(ap05[ap05 > -1])
+        ap95 = res['precision'][:, :, :, 0, 2]
+        map95 = np.mean(ap95[ap95 > -1])
         """
         # show precision of each class
         s = cocoEval.eval['precision'][0]
@@ -237,3 +287,5 @@ class EvalCOCO(EvalBase):
             rc.append(np.mean(r[r>-1]))
         print(rc)
         """
+        return res, [map05, map95]
+

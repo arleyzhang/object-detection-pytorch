@@ -41,16 +41,20 @@ cfg = __C
 # ---------------------------------------------------------------------------- #
 # Root directory of project
 __C.ROOT_DIR = osp.abspath(osp.join(osp.dirname(__file__), '..', '..'))
-__C.CFG_ROOT = osp.abspath(osp.join(__C.ROOT_DIR, 'cfgs'))
+__C.CFG_ROOT = osp.join(__C.ROOT_DIR, 'cfgs')
+__C.WEIGHTS_ROOT = osp.join(__C.ROOT_DIR, 'weights')
+__C.HISTORY_ROOT = osp.join(__C.ROOT_DIR, 'history')
 __C.CUDA_VISIBLE_DEVICES = '0,1,2,3'
-
+# for profile
+__C.CUDA_LAUNCH_BLOCKING = '0'
 
 # ---------------------------------------------------------------------------- #
 # Log options
 # ---------------------------------------------------------------------------- #
 __C.LOG = AttrDict()
-__C.LOG.ROOT_DIR = './experiments/models/ssd_voc'
-
+__C.LOG.ROOT_DIR = osp.abspath(osp.join(__C.ROOT_DIR, './logs'))
+__C.LOG.SHOW_PR_CURVE = False
+__C.LOG.SHOW_TEST_IMAGE = False
 
 # ---------------------------------------------------------------------------- #
 # Dataset options
@@ -63,10 +67,9 @@ __C.DATASET.SUB_DIR = 'VOCdevkit'
 # path of the dataset
 __C.DATASET.DATASET_DIR = osp.abspath(osp.join(__C.ROOT_DIR, 'data', __C.DATASET.SUB_DIR))
 # train set scope
-__C.DATASET.TRAIN_SETS = [('2007', 'trainval'), ('2012', 'trainval')]
+__C.DATASET.TRAIN_SETS = (('2007', 'trainval'), ('2012', 'trainval'),)
 # test set scope
-# __C.DATASET.TEST_SETS = [('2007', 'test')]  # [('2007', 'test')]
-__C.DATASET.TEST_SETS = [('2007', 'test')]  # [('2007', 'test')]
+__C.DATASET.TEST_SETS = (('2007', 'test'),)
 # class number in the dataset
 __C.DATASET.NUM_CLASSES = 20
 
@@ -120,19 +123,17 @@ __C.MODEL.FLIP = True
 
 
 # ---------------------------------------------------------------------------- #
-# Evaluation options
-# ---------------------------------------------------------------------------- #
-__C.EVAL = AttrDict()
-# __C.EVAL.BATCH_SIZE = __C.TRAIN.BATCH_SIZE
-# __C.EVAL.TEST_SCOPE = [0, 300]
-
-
-# ---------------------------------------------------------------------------- #
 # Training options
 # ---------------------------------------------------------------------------- #
 __C.TRAIN = AttrDict()
 # # Minibatch size
 __C.TRAIN.MAX_ITER = 120000
+# evaluate every eval_iter
+__C.TRAIN.EVAL_ITER = 10000
+# save models every
+__C.TRAIN.SAVE_ITER = 10000
+# log loss every
+__C.TRAIN.LOG_LOSS_ITER = 10
 
 
 # ---------------------------------------------------------------------------- #
@@ -147,6 +148,14 @@ __C.TRAIN.OPTIMIZER.LR = 1e-3
 __C.TRAIN.OPTIMIZER.MOMENTUM = 0.9
 # Weight decay, for regularization
 __C.TRAIN.OPTIMIZER.WEIGHT_DECAY = 5e-4
+
+
+# ---------------------------------------------------------------------------- #
+# Evaluation options
+# ---------------------------------------------------------------------------- #
+__C.EVAL = AttrDict()
+# __C.EVAL.BATCH_SIZE = __C.TRAIN.BATCH_SIZE
+# __C.EVAL.TEST_SCOPE = [0, 300]
 
 
 # ---------------------------------------------------------------------------- #

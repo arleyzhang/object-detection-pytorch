@@ -142,7 +142,7 @@ class PriorBoxSSD(PriorBoxBase):
         return prior
 
 
-PriorBox = PriorBoxSSD
+# PriorBox = PriorBoxSSD
 
 
 def test_no_vis(cfg, tb_writer):
@@ -194,7 +194,7 @@ if __name__ == '__main__':
     import copy
     # from lib.datasets.config import ssd_voc_vgg as cfg
     # from lib.utils.visualize_utils import TBWriter
-    # log_dir = './experiments/models/ssd_voc/test_prior'
+    # log_dir = './jobs/models/ssd_voc/test_prior'
     # tb_writer = TBWriter(log_dir, {'epoch': 50})
     #
     # test_no_vis(cfg, tb_writer)

@@ -61,7 +61,7 @@ parser.add_argument('--save_folder', default='weights/',  ################ snaps
                     help='Directory for saving checkpoint models')
 parser.add_argument('--loss_type', default='ssd_loss', type=str,    ########## loss type
                     help='ssd_loss or repul_loss')
-parser.add_argument('--log_dir', default='./experiments/models/ssd_voc', type=str,
+parser.add_argument('--log_dir', default='./jobs/models/ssd_voc', type=str,
                     help='tensorboard log_dir')
 args = parser.parse_args()
 

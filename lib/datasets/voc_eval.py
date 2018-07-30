@@ -262,7 +262,7 @@ def do_python_eval(output_dir='output', test_set='test', use_07=True):
             pickle.dump({'rec': rec, 'prec': prec, 'ap': ap}, f)
         res.append((cls, ap, prec, rec))
     print('Mean AP = {:.4f}'.format(np.mean(aps)))
-    return res
+    return res, np.mean(aps)
     # print('~~~~~~~~')
     # print('Results:')
     # for ap in aps:
@@ -278,7 +278,7 @@ def do_python_eval(output_dir='output', test_set='test', use_07=True):
 
 def evaluate_detections(box_list, output_dir, dataset, test_set='test'):
     write_voc_results_file(box_list, dataset, test_set)
-    res = do_python_eval(output_dir, test_set)
-    return res
+    res, mAP = do_python_eval(output_dir, test_set)
+    return res, mAP
 
 

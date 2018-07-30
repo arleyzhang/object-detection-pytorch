@@ -1,109 +1,91 @@
-from lib.datasets import *
-from lib.models.model_factory import model_factory
-from lib.utils.augmentations import SSDAugmentation
-from lib.layers.modules import MultiBoxLoss
+import argparse
 import os
 import os.path as osp
-import time
-import torch
+from distutils.dir_util import copy_tree
+from shutil import copyfile
+
 from torch.autograd import Variable
+import torch
 import torch.nn as nn
 import torch.optim as optim
-import torch.backends.cudnn as cudnn
 import torch.nn.init as init
-import torch.utils.data as data
-import argparse
-from lib.utils.visualize_utils import *
-from lib.layers import *
-import random
 
+from lib.datasets import dataset_factory
+from lib.models import model_factory
+from lib.utils import eval_solver_factory
+from lib.layers.modules import MultiBoxLoss
 from lib.utils.config import cfg, merge_cfg_from_file
 from lib.utils.visualize_utils import TBWriter
-
-
-def str2bool(v):
-    return v.lower() in ("yes", "true", "t", "1")
-
+from lib.utils.utils import Timer, setup_cuda, create_if_not_exist
 
 parser = argparse.ArgumentParser(
     description='Single Shot MultiBox Detector Training With Pytorch')
 train_set = parser.add_mutually_exclusive_group()
-parser.add_argument('--basenet', default='vgg16_reducedfc.pth',
-                    help='Pretrained base model')  # vgg16_reducedfc
-parser.add_argument('--batch_size', default=32, type=int,
-                    help='Batch size for training')
+parser.add_argument('--cfg_name', default='ssd_vgg16_voc',
+                    help='base name of config file')
+parser.add_argument('--debug', default=False, type=bool,
+                    help='Directory for saving checkpoint models')
+parser.add_argument('--basenet', default='pretrain/vgg16_reducedfc.pth',
+                    help='Pretrained base model')  # TODO config
 parser.add_argument('--resume', default=None, type=str,
                     help='Checkpoint state_dict file to resume training from')
-parser.add_argument('--start_iter', default=0, type=int,
+parser.add_argument('--start_iter', default=1, type=int,
                     help='Resume training at this iter')
-parser.add_argument('--cuda', default=True, type=str2bool,
+parser.add_argument('--cuda', default=True, type=bool,
                     help='Use CUDA to train model')
-parser.add_argument('--tensorboard', default=False, type=str2bool,
+parser.add_argument('--devices', default='0,1,2,3', type=str,
+                    help='GPU to use')
+parser.add_argument('--tensorboard', default=True, type=bool,
                     help='Use tensorboard')
-parser.add_argument('--save_folder', default='weights/reference/',
-                    help='Directory for saving checkpoint models')
 parser.add_argument('--loss_type', default='ssd_loss', type=str,
-                    help='ssd_loss or repul_loss')
-parser.add_argument('--log_dir', default='./experiments/models/ssd_voc', type=str,
-                    help='tensorboard log_dir')
+                    help='ssd_loss only now')
 args = parser.parse_args()
 
-snapshot_prefix = 'ssd_VOC_reference_'
-step_index = 0  # TODO need put in args ???
 
-os.environ["CUDA_VISIBLE_DEVICES"] = cfg.CUDA_VISIBLE_DEVICES
-log_dir = osp.join(osp.join(cfg.LOG.ROOT_DIR, 'voc'))
-tb_writer = TBWriter(log_dir, {'epoch': 50})
+def setup():
+    # setup config
+    job_folder = 'jobs' if not args.debug else 'tests'
+    cfg_path = osp.join(cfg.CFG_ROOT, job_folder, args.cfg_name+'.yml')
+    merge_cfg_from_file(cfg_path)
 
-if torch.cuda.is_available():
-    if args.cuda:
-        torch.set_default_tensor_type('torch.cuda.FloatTensor')
-    if not args.cuda:
-        print("WARNING: It looks like you have a CUDA device, but aren't " +
-              "using CUDA.")
-        torch.set_default_tensor_type('torch.FloatTensor')
-else:
-    torch.set_default_tensor_type('torch.FloatTensor')
+    # setup weights folder
+    create_if_not_exist([cfg.WEIGHTS_ROOT, cfg.HISTORY_ROOT], warn=False)
+    snapshot_dir = osp.join(cfg.WEIGHTS_ROOT, args.cfg_name)
+    create_if_not_exist(snapshot_dir, warn=True)
 
-if not os.path.exists(args.save_folder):  # snapshot and save_model
-    os.mkdir(args.save_folder)
+    # setup logger
+    # TODO image logger another writer
+    log_dir = osp.join(osp.join(cfg.LOG.ROOT_DIR, args.cfg_name))
+    tb_writer = TBWriter(log_dir, {'phase': 'train',
+                                   'show_pr_curve': cfg.LOG.SHOW_PR_CURVE,
+                                   'show_test_image': cfg.LOG.SHOW_TEST_IMAGE})
+    setup_cuda(cfg, args.cuda, args.devices)
+    return tb_writer, cfg_path, snapshot_dir, log_dir
+
+
+def backup_jobs(cfg_path, log_dir):
+    out_dir = osp.join(cfg.HISTORY_ROOT, args.cfg_name)
+    if osp.exists(out_dir):
+        out_name = args.cfg_name + '_n'
+        print('\033[91m' + 'backup with new name {}'.format(out_name) + '\033[0m')
+        out_dir = osp.join(cfg.HISTORY_ROOT, out_name)
+    create_if_not_exist(out_dir)
+    cfg_name = args.cfg_name + '.yml'
+
+    copyfile(cfg_path, osp.join(out_dir, cfg_name))
+    copy_tree(log_dir, out_dir)
 
 
 def train():
-    global step_index
+    tb_writer, cfg_path, snapshot_dir, log_dir = setup()
+    step_index = 0
 
-    if args.cuda:
-        torch.set_default_tensor_type('torch.cuda.FloatTensor')
-        cudnn.benchmark = False
-        # cudnn.deterministic = True
-    if not args.cuda:
-        torch.set_default_tensor_type('torch.FloatTensor')
+    train_loader = dataset_factory(phase='train', cfg=cfg)
+    val_loader = dataset_factory(phase='eval', cfg=cfg)
+    eval_solver = eval_solver_factory(val_loader, cfg)
 
-    # configs of each dataset
-    dataset_name = cfg.DATASET.NAME
-    if dataset_name == 'VOC0712':
-        DataDetection = VOCDetection
-        anno_trans = VOCAnnotationTransform()
-    elif dataset_name == 'COCO2014':
-        cfg_path = osp.join(cfg.CFG_ROOT, 'coco.yml')
-        merge_cfg_from_file(cfg_path)
-        DataDetection = COCODetection
-        anno_trans = COCOAnnotationTransform()
-    else:
-        raise Exception("Wrong dataset name {}".format(dataset_name))
-
-    # load dataset and dataloader
-    dataset = DataDetection(cfg.DATASET.DATASET_DIR,
-                            cfg.DATASET.TRAIN_SETS,
-                            SSDAugmentation(cfg.DATASET.IMAGE_SIZE, cfg.DATASET.PIXEL_MEANS))
-    data_loader = data.DataLoader(dataset, batch_size=cfg.DATASET.TRAIN_BATCH_SIZE,
-                                  num_workers=cfg.DATASET.NUM_WORKERS,
-                                  shuffle=True, collate_fn=detection_collate, pin_memory=True)
-    if args.tensorboard:
-        pass
-
-    ssd_net, priors, _ = model_factory(phase='eval', cfg=cfg)
-    net = ssd_net  # net is for the parallel version of ssd_net
+    ssd_net, priors, _ = model_factory(phase='train', cfg=cfg)
+    net = ssd_net  # net is the parallel version of ssd_net
 
     if args.cuda:
         net = torch.nn.DataParallel(ssd_net)
@@ -117,15 +99,14 @@ def train():
         args.start_iter = checkpoint['iteration']
         step_index = checkpoint['step_index']
         ssd_net.load_state_dict(checkpoint['state_dict'])
-        raise Exception()
     else:
-        vgg_weights = torch.load(args.save_folder + args.basenet)
+        # pretained weights
+        vgg_weights = torch.load(osp.join(cfg.WEIGHTS_ROOT, args.basenet))
         print('Loading base network...')
-        ssd_net.vgg.load_state_dict(vgg_weights)
+        ssd_net.base.load_state_dict(vgg_weights)
 
-    if not args.resume:
-        print('Initializing weights...')
         # initialize newly added layers' weights with xavier method
+        print('Initializing weights...')
         ssd_net.extras.apply(weights_init)
         ssd_net.loc.apply(weights_init)
         ssd_net.conf.apply(weights_init)
@@ -136,99 +117,102 @@ def train():
     optimizer = optim.SGD(net.parameters(), lr=cfg.TRAIN.OPTIMIZER.LR,
                           momentum=cfg.TRAIN.OPTIMIZER.MOMENTUM,
                           weight_decay=cfg.TRAIN.OPTIMIZER.WEIGHT_DECAY)
-
     criterion = MultiBoxLoss(cfg.MODEL.NUM_CLASSES, 0.5, True, 0, True, 3, 0.5,
-                                False, args.cuda)
+                             False, args.cuda)
 
-    if args.start_iter not in cfg.TRAIN.LR_SCHEDULER.STEPS and step_index != 0:  # consider 8w, 12w...
+    # continue training at 8w, 12w...
+    if args.start_iter not in cfg.TRAIN.LR_SCHEDULER.STEPS and step_index != 0:
         adjust_learning_rate(optimizer, cfg.TRAIN.LR_SCHEDULER.GAMMA, step_index)
 
     net.train()
-    # loss counters
-    loc_loss = 0
-    conf_loss = 0
-    epoch = 0
-
-    epoch_size = len(dataset) // cfg.DATASET.TRAIN_BATCH_SIZE
-    print('Training SSD on:', dataset.name)
+    epoch_size = len(train_loader.dataset) // cfg.DATASET.TRAIN_BATCH_SIZE
+    num_epochs = (cfg.TRAIN.MAX_ITER + epoch_size - 1) // epoch_size
+    print('Training SSD on:', train_loader.dataset.name)
     print('Using the specified args:')
     print(args)
 
-    # create batch iterator
-    batch_iterator = iter(data_loader)
-    for iteration in range(args.start_iter, cfg.TRAIN.MAX_ITER):
-        # tensorboard vis every epoch
-        if args.tensorboard and iteration != 0 and (iteration % epoch_size == 0):
-            # visualize_epoch(net, visualize_loader, priorbox, writer, epoch)
-            # reset epoch loss counters
-            loc_loss = 0
-            conf_loss = 0
-            epoch += 1
+    # timer
+    t_ = {'network': Timer(), 'misc': Timer(), 'all': Timer(), 'eval': Timer()}
+    t_['all'].tic()
 
-        if iteration in cfg.TRAIN.LR_SCHEDULER.STEPS:
-            step_index += 1
-            adjust_learning_rate(optimizer, cfg.TRAIN.LR_SCHEDULER.GAMMA, step_index)
+    iteration = args.start_iter
+    for epoch in range(num_epochs):
+        tb_writer.cfg['epoch'] = epoch
+        for images, targets, _ in train_loader:
+            tb_writer.cfg['iteration'] = iteration
+            t_['misc'].tic()
+            if iteration in cfg.TRAIN.LR_SCHEDULER.STEPS:
+                t_['misc'].tic()
+                step_index += 1
+                adjust_learning_rate(optimizer, cfg.TRAIN.LR_SCHEDULER.GAMMA, step_index)
 
-        # load train data
-        try:
-            images, targets, extra = next(batch_iterator)
-        except StopIteration:
-            batch_iterator = iter(data_loader)
-            images, targets, extra = next(batch_iterator)
+            if args.cuda:
+                images = Variable(images.cuda())
+                targets = [Variable(ann.cuda(), volatile=True) for ann in targets]
+            else:
+                images = Variable(images)
+                targets = [Variable(ann, volatile=True) for ann in targets]
 
-        if args.cuda:
-            images = Variable(images.cuda())
-            targets = [Variable(ann.cuda(), volatile=True) for ann in targets]
-        else:
-            images = Variable(images)
-            targets = [Variable(ann, volatile=True) for ann in targets]
-        # forward
-        t0 = time.time()
-        out = net(images)
-        out1 = [out[0], out[1], priors]
-        # backprop
-        optimizer.zero_grad()
+            # forward
+            t_['network'].tic()
+            out = net(images)
+            out1 = [out[0], out[1], priors]
 
-        if args.loss_type == 'ssd_loss':
+            # backward
+            optimizer.zero_grad()
             loss_l, loss_c = criterion(out1, targets)
             loss = loss_l + loss_c
-        else:
-            raise Exception()
-        loss.backward()
-        optimizer.step()
+            loss.backward()
+            optimizer.step()
+            t_['network'].toc()
 
-        t1 = time.time()
-        loc_loss += loss_l.data[0]
-        conf_loss += loss_c.data[0]
+            # log
+            if iteration % cfg.TRAIN.LOG_LOSS_ITER == 0:
+                t_['misc'].toc()
+                print('Iter ' + str(iteration) + ' || Loss: %.3f' % (loss.data[0]) +
+                      '|| conf_loss: %.3f' % (loss_c.data[0]) + ' || loc loss: %.3f ' % (loss_l.data[0]), end=' ')
+                print('Timer: %.3f sec.' % t_['misc'].diff, '  Lr: %.6f' % optimizer.param_groups[0]['lr'])
+                if args.tensorboard:
+                    phase = tb_writer.cfg['phase']
+                    tb_writer.writer.add_scalar('{}/loc_loss'.format(phase), loss_l.data[0], iteration)
+                    tb_writer.writer.add_scalar('{}/conf_loss'.format(phase), loss_c.data[0], iteration)
+                    tb_writer.writer.add_scalar('{}/all_loss'.format(phase), loss.data[0], iteration)
+                    tb_writer.writer.add_scalar('{}/time'.format(phase), t_['misc'].diff, iteration)
 
-        if iteration % 10 == 0:
-            print('timer: %.4f sec.' % (t1 - t0), '  lr: ', optimizer.param_groups[0]['lr'])
+            # save model
+            if iteration % cfg.TRAIN.SAVE_ITER == 0 and iteration != args.start_iter or \
+                    iteration == cfg.TRAIN.MAX_ITER:
+                print('Saving state, iter:', iteration)
+                save_checkpoint({'iteration': iteration,
+                                 'step_index': step_index,
+                                 'state_dict': ssd_net.state_dict()},
+                                snapshot_dir,
+                                args.cfg_name + '_' + repr(iteration) + '.pth')
 
-            if args.loss_type == 'ssd_loss':
-                print('Iteration ' + repr(iteration) + ' || Loss: %.4f ||' % (loss.data[0]) + \
-                      ' || conf_loss: %.4f' % (loss_c.data[0]) + ' || smoothl1 loss: %.4f ' % (loss_l.data[0]), \
-                      end=' ')
-            if args.tensorboard:
-                # log for tensorboard
-                # writer.add_scalar('Train/loc_loss', loss_l.data[0], iteration)
-                # writer.add_scalar('Train/conf_loss', loss_c.data[0], iteration)
-                pass
+            # Eval
+            if (iteration % cfg.TRAIN.EVAL_ITER == 0 and iteration != args.start_iter) or \
+                    iteration == cfg.TRAIN.MAX_ITER:
+                print('Start evaluation ......')
+                tb_writer.cfg['phase'] = 'eval'
+                t_['eval'].tic()
+                net.eval()
+                aps, mAPs = eval_solver.validate(net, priors, tb_writer=tb_writer)
+                net.train()
+                t_['eval'].toc()
+                print('Iteration ' + str(iteration) + ' || mAP: %.3f' % mAPs[0] + ' ||eval_time: %.4f/%.4f' %
+                      (t_['eval'].diff, t_['eval'].average_time))
+                if cfg.DATASET.NAME == 'VOC0712':
+                    tb_writer.writer.add_scalar('mAP/mAP@0.5', mAPs[0], iteration)
+                else:
+                    tb_writer.writer.add_scalar('mAP/mAP@0.5', mAPs[0], iteration)
+                    tb_writer.writer.add_scalar('mAP/mAP@0.95', mAPs[1], iteration)
+                tb_writer.cfg['phase'] = 'train'
 
-        # save model
-        if iteration != args.start_iter and iteration % 5000 == 0:
-            print('Saving state, iter:', iteration)
-            save_checkpoint({'iteration': iteration,
-                             'step_index': step_index,
-                             'state_dict': ssd_net.state_dict()},
-                            args.save_folder,
-                            snapshot_prefix + repr(iteration) + '.pth')
-        if iteration == cfg.TRAIN.MAX_ITER - 1:  # save model in end of training
-            print('Saving state, iter:', iteration)
-            save_checkpoint({'iteration': iteration,
-                             'step_index': step_index,
-                             'state_dict': ssd_net.state_dict()},
-                            args.save_folder,
-                            snapshot_prefix + str(cfg.TRAIN.LR_SCHEDULER.STEPS) + '.pth')
+            if iteration == cfg.TRAIN.MAX_ITER:
+                break
+            iteration += 1
+
+    backup_jobs(cfg_path, log_dir)
 
 
 def save_checkpoint(state, path, name):
@@ -242,7 +226,7 @@ def adjust_learning_rate(optimizer, gamma, step):
     # Adapted from PyTorch Imagenet example:
     # https://github.com/pytorch/examples/blob/master/imagenet/main.py
     """
-    lr = args.lr * (gamma ** (step))
+    lr = cfg.TRAIN.OPTIMIZER.LR * (gamma ** step)
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
 
@@ -255,16 +239,6 @@ def weights_init(m):
     if isinstance(m, nn.Conv2d):
         xavier(m.weight.data)
         m.bias.data.zero_()
-
-
-def visualize_epoch(model, data_loader, priorbox, writer, epoch):
-    model.eval()
-    img_index = random.randint(0, len(data_loader.dataset) - 1)
-    image, boxes, labels = data_loader.dataset.pull_aug(img_index)
-    # get preproc
-    transform = data_loader.dataset.transform
-    transform.add_writer(writer, epoch)
-    transform(image, boxes, labels)
 
 
 if __name__ == '__main__':

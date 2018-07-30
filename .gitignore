@@ -147,14 +147,14 @@ read*.py
 # dataset dir
 data/
 
-# files enough for reimplementation
-jobs/
-
-# running script and models and eval results and logs.
-results/
-
 # log dir for tensorboard
 logs/
+
+# history dir for jobs
+history/
+
+# model weights
+weights/
 
 # cache dir
 cache/
