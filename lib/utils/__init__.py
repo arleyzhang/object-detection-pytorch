@@ -1,5 +1,5 @@
 from .augmentations import SSDAugmentation
-from .utils import EvalVOC, EvalCOCO
+from lib.utils.evaluate_utils import EvalVOC, EvalCOCO
 
 eval_solver_map = {'VOC0712': EvalVOC,
                    'COCO2014': EvalCOCO}

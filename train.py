@@ -14,17 +14,18 @@ from lib.datasets import dataset_factory
 from lib.models import model_factory
 from lib.utils import eval_solver_factory
 from lib.layers.modules import MultiBoxLoss
-from lib.utils.config import cfg, merge_cfg_from_file
-from lib.utils.visualize_utils import TBWriter
-from lib.utils.utils import Timer, setup_cuda, create_if_not_exist
+from lib.utils.config import cfg
+from lib.utils.utils import Timer, create_if_not_exist, setup_folder
 
 parser = argparse.ArgumentParser(
     description='Single Shot MultiBox Detector Training With Pytorch')
 train_set = parser.add_mutually_exclusive_group()
 parser.add_argument('--cfg_name', default='ssd_vgg16_voc',
                     help='base name of config file')
-parser.add_argument('--debug', default=False, type=bool,
+parser.add_argument('--job_group', default='base', type=str,
                     help='Directory for saving checkpoint models')
+parser.add_argument('--devices', default='0,1,2,3', type=str,
+                    help='GPU to use')
 parser.add_argument('--basenet', default='pretrain/vgg16_reducedfc.pth',
                     help='Pretrained base model')  # TODO config
 parser.add_argument('--resume', default=None, type=str,
@@ -33,8 +34,6 @@ parser.add_argument('--start_iter', default=1, type=int,
                     help='Resume training at this iter')
 parser.add_argument('--cuda', default=True, type=bool,
                     help='Use CUDA to train model')
-parser.add_argument('--devices', default='0,1,2,3', type=str,
-                    help='GPU to use')
 parser.add_argument('--tensorboard', default=True, type=bool,
                     help='Use tensorboard')
 parser.add_argument('--loss_type', default='ssd_loss', type=str,
@@ -42,42 +41,8 @@ parser.add_argument('--loss_type', default='ssd_loss', type=str,
 args = parser.parse_args()
 
 
-def setup():
-    # setup config
-    job_folder = 'jobs' if not args.debug else 'tests'
-    cfg_path = osp.join(cfg.CFG_ROOT, job_folder, args.cfg_name+'.yml')
-    merge_cfg_from_file(cfg_path)
-
-    # setup weights folder
-    create_if_not_exist([cfg.WEIGHTS_ROOT, cfg.HISTORY_ROOT], warn=False)
-    snapshot_dir = osp.join(cfg.WEIGHTS_ROOT, args.cfg_name)
-    create_if_not_exist(snapshot_dir, warn=True)
-
-    # setup logger
-    # TODO image logger another writer
-    log_dir = osp.join(osp.join(cfg.LOG.ROOT_DIR, args.cfg_name))
-    tb_writer = TBWriter(log_dir, {'phase': 'train',
-                                   'show_pr_curve': cfg.LOG.SHOW_PR_CURVE,
-                                   'show_test_image': cfg.LOG.SHOW_TEST_IMAGE})
-    setup_cuda(cfg, args.cuda, args.devices)
-    return tb_writer, cfg_path, snapshot_dir, log_dir
-
-
-def backup_jobs(cfg_path, log_dir):
-    out_dir = osp.join(cfg.HISTORY_ROOT, args.cfg_name)
-    if osp.exists(out_dir):
-        out_name = args.cfg_name + '_n'
-        print('\033[91m' + 'backup with new name {}'.format(out_name) + '\033[0m')
-        out_dir = osp.join(cfg.HISTORY_ROOT, out_name)
-    create_if_not_exist(out_dir)
-    cfg_name = args.cfg_name + '.yml'
-
-    copyfile(cfg_path, osp.join(out_dir, cfg_name))
-    copy_tree(log_dir, out_dir)
-
-
 def train():
-    tb_writer, cfg_path, snapshot_dir, log_dir = setup()
+    tb_writer, cfg_path, snapshot_dir, log_dir = setup_folder(args, cfg)
     step_index = 0
 
     train_loader = dataset_factory(phase='train', cfg=cfg)
@@ -101,7 +66,7 @@ def train():
         ssd_net.load_state_dict(checkpoint['state_dict'])
     else:
         # pretained weights
-        vgg_weights = torch.load(osp.join(cfg.WEIGHTS_ROOT, args.basenet))
+        vgg_weights = torch.load(osp.join(cfg.GENERAL.WEIGHTS_ROOT, args.basenet))
         print('Loading base network...')
         ssd_net.base.load_state_dict(vgg_weights)
 
@@ -212,7 +177,21 @@ def train():
                 break
             iteration += 1
 
-    backup_jobs(cfg_path, log_dir)
+    backup_jobs(cfg, cfg_path, log_dir)
+
+
+def backup_jobs(cfg, cfg_path, log_dir):
+    print('backing up cfg and log')
+    out_dir = osp.join(cfg.GENERAL.HISTORY_ROOT, cfg.GENERAL.JOB_GROUP, args.cfg_name)
+    if osp.exists(out_dir):
+        out_name = args.cfg_name + '_n'
+        print('\033[91m' + 'backup with new name {}'.format(out_name) + '\033[0m')
+        out_dir = osp.join(cfg.GENERAL.HISTORY_ROOT, cfg.GENERAL.JOB_GROUP, out_name)
+    create_if_not_exist(out_dir)
+    cfg_name = args.cfg_name + '.yml'
+
+    copyfile(cfg_path, osp.join(out_dir, cfg_name))
+    copy_tree(log_dir, out_dir)
 
 
 def save_checkpoint(state, path, name):

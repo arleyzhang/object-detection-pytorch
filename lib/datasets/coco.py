@@ -39,7 +39,7 @@ class COCOAnnotationTransform(object):
     """
 
     def __init__(self, norm_box=True):
-        self.label_map = get_label_map(osp.join(cfg.ROOT_DIR, 'lib', 'datasets', 'coco_labels.txt'))
+        self.label_map = get_label_map(osp.join(cfg.GENERAL.ROOT_DIR, 'lib', 'datasets', 'coco_labels.txt'))
         self.inver_map = {v: k for k, v in self.label_map.items()}
         self.norm_box = norm_box
 
@@ -142,7 +142,6 @@ def test_vis():
                                COCOAnnotationTransform())
 
     from lib.utils.visualize_utils import TBWriter
-    log_dir = './jobs/models/ssd_voc/test_vis_coco_'
     tb_writer = TBWriter(log_dir, {'epoch': 50, 'vis_list': [3, 4, 5, 6, 8]})
 
     # import random

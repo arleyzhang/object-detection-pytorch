@@ -40,19 +40,21 @@ cfg = __C
 # General options
 # ---------------------------------------------------------------------------- #
 # Root directory of project
-__C.ROOT_DIR = osp.abspath(osp.join(osp.dirname(__file__), '..', '..'))
-__C.CFG_ROOT = osp.join(__C.ROOT_DIR, 'cfgs')
-__C.WEIGHTS_ROOT = osp.join(__C.ROOT_DIR, 'weights')
-__C.HISTORY_ROOT = osp.join(__C.ROOT_DIR, 'history')
-__C.CUDA_VISIBLE_DEVICES = '0,1,2,3'
+__C.GENERAL = AttrDict()
+__C.GENERAL.ROOT_DIR = osp.abspath(osp.join(osp.dirname(__file__), '..', '..'))
+__C.GENERAL.CFG_ROOT = osp.join(__C.GENERAL.ROOT_DIR, 'cfgs')
+__C.GENERAL.JOB_GROUP = osp.join(__C.GENERAL.CFG_ROOT, 'base')
+__C.GENERAL.WEIGHTS_ROOT = osp.join(__C.GENERAL.ROOT_DIR, 'weights')
+__C.GENERAL.HISTORY_ROOT = osp.join(__C.GENERAL.ROOT_DIR, 'history')
+__C.GENERAL.CUDA_VISIBLE_DEVICES = '0,1,2,3'
 # for profile
-__C.CUDA_LAUNCH_BLOCKING = '0'
+__C.GENERAL.CUDA_LAUNCH_BLOCKING = '0'
 
 # ---------------------------------------------------------------------------- #
 # Log options
 # ---------------------------------------------------------------------------- #
 __C.LOG = AttrDict()
-__C.LOG.ROOT_DIR = osp.abspath(osp.join(__C.ROOT_DIR, './logs'))
+__C.LOG.ROOT_DIR = osp.abspath(osp.join(__C.GENERAL.ROOT_DIR, './logs'))
 __C.LOG.SHOW_PR_CURVE = False
 __C.LOG.SHOW_TEST_IMAGE = False
 
@@ -65,7 +67,7 @@ __C.DATASET = AttrDict()
 __C.DATASET.NAME = 'VOC0712'
 __C.DATASET.SUB_DIR = 'VOCdevkit'
 # path of the dataset
-__C.DATASET.DATASET_DIR = osp.abspath(osp.join(__C.ROOT_DIR, 'data', __C.DATASET.SUB_DIR))
+__C.DATASET.DATASET_DIR = osp.abspath(osp.join(__C.GENERAL.ROOT_DIR, 'data', __C.DATASET.SUB_DIR))
 # train set scope
 __C.DATASET.TRAIN_SETS = (('2007', 'trainval'), ('2012', 'trainval'),)
 # test set scope
@@ -180,7 +182,7 @@ def merge_cfg_from_file(cfg_filename):
 
 def update_cfg():
     # TODO this is error prone
-    __C.DATASET.DATASET_DIR = osp.abspath(osp.join(__C.ROOT_DIR, 'data', __C.DATASET.SUB_DIR))
+    __C.DATASET.DATASET_DIR = osp.abspath(osp.join(__C.GENERAL.ROOT_DIR, 'data', __C.DATASET.SUB_DIR))
     __C.MODEL.NUM_CLASSES = __C.DATASET.NUM_CLASSES + 1
 
 

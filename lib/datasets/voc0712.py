@@ -138,7 +138,6 @@ def test_vis():
                            SSDAugmentation((300, 500), dataset_mean),
                            VOCAnnotationTransform())
     from lib.utils.visualize_utils import TBWriter
-    log_dir = './jobs/models/ssd_voc/test_pr'
     tb_writer = TBWriter(log_dir, {'vis_list': [3, 4, 5, 6, 8]})
 
     # import random

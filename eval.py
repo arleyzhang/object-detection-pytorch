@@ -13,7 +13,7 @@ from torch.autograd import Variable
 from lib.datasets import dataset_factory
 from lib.models import model_factory
 from lib.utils import eval_solver_factory
-from lib.utils.utils import setup_cuda
+from lib.utils.utils import setup_cuda, setup_folder
 
 
 def str2bool(v):
@@ -50,35 +50,30 @@ if __name__ == '__main__':
     from lib.utils.visualize_utils import TBWriter
 
     args.cfg_name = 'ssd_vgg16_coco'
-    job_folder = 'jobs' if not args.debug else 'tests'
+    # job_folder = 'base' if not args.debug else 'tests'
     args.trained_model = 'ssd_vgg16_coco120000.pth'
 
     # args.cfg_name = 'ssd_vgg16_voc'
-    # job_folder = 'jobs' if not args.debug else 'tests'
     # args.trained_model = 'ssd_vgg16_voc20000.pth'
 
-    cfg_path = osp.join(cfg.CFG_ROOT, job_folder, args.cfg_name+'.yml')
-    merge_cfg_from_file(cfg_path)
-    snapshot_dir = osp.join(cfg.WEIGHTS_ROOT, args.cfg_name)
-    model_dir = osp.join(snapshot_dir, args.trained_model)
+    cfg, tb_writer, cfg_path, snapshot_dir, log_dir = setup_folder(args, cfg, phase='eval')
+
+    # cfg_path = osp.join(cfg.CFG_ROOT, job_folder, args.cfg_name+'.yml')
+    # merge_cfg_from_file(cfg_path)
+    # snapshot_dir = osp.join(cfg.WEIGHTS_ROOT, args.cfg_name)
+
+    # model_dir = osp.join(snapshot_dir, args.trained_model)
     # model_dir = './weights/vgg16_ssd_coco_24.4.pth'
 
-    # configs of each dataset
-    # if args.cfg_file == 'voc':
-    #     if args.trained_model is None:
-    #         args.trained_model = './results/ssd300_mAP_77.43_v2.pth'
-    # elif args.cfg_file == 'coco':
-    #     cfg_path = osp.join(cfg.CFG_ROOT, 'coco.yml')
-    #     merge_cfg_from_file(cfg_path)
-    #     args.trained_model = './results/vgg16_ssd_coco_24.4.pth'
-
+    # args.trained_model = './results/vgg16_ssd_coco_24.4.pth'
+    # args.trained_model = './results/ssd300_mAP_77.43_v2.pth'
     setup_cuda(cfg, args.cuda, args.devices)
 
     np.set_printoptions(precision=3, suppress=True, edgeitems=4)
-    log_dir = osp.join(osp.join(cfg.LOG.ROOT_DIR, 'debug_eval'))
-    tb_writer = TBWriter(log_dir, {'phase': 'eval',
-                                   'show_pr_curve': cfg.LOG.SHOW_PR_CURVE,
-                                   'show_test_image': cfg.LOG.SHOW_TEST_IMAGE})
+    # log_dir = osp.join(osp.join(cfg.LOG.ROOT_DIR, 'debug_eval'))
+    # tb_writer = TBWriter(log_dir, {'phase': 'eval',
+    #                                'show_pr_curve': cfg.LOG.SHOW_PR_CURVE,
+    #                                'show_test_image': cfg.LOG.SHOW_TEST_IMAGE})
 
     loader = dataset_factory(phase='eval', cfg=cfg)
 
