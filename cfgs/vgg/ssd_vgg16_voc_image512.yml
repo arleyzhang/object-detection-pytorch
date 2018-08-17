@@ -1,0 +1,23 @@
+GENERAL:
+  CUDA_VISIBLE_DEVICES:  '0,1,2,3'
+DATASET:
+  NAME: 'VOC0712'
+  SUB_DIR: 'VOCdevkit'
+  TRAIN_SETS: (('2007', 'trainval'), ('2012', 'trainval'), )
+  TEST_SETS:  (('2007', 'test'), )
+  NUM_CLASSES: 20
+  NUM_WORKERS: 48
+  IMAGE_SIZE: (512, 512)
+#  DATASET_DIR: '/home/yanleizhang/data/VOCdevkit'
+
+MODEL:
+  SSD_TYPE: 'SSD'
+  IMAGE_SIZE: (512, 512)
+  STEPS: [8, 16, 32, 64, 128, 256, 512]
+  ASPECT_RATIOS: [[2], [2, 3], [2, 3], [2, 3], [2, 3], [2], [2]]
+#  for VOC
+  MIN_SIZES: [35.84, 76.8, 153.6, 230.4, 307.2, 384.0, 460.8]
+  MAX_SIZES: [76.8, 153.6, 230.4, 307.2, 384.0, 460.8, 537.6]
+#  for COCO, this configuration makes better
+#  MIN_SIZES: [20.48, 51.2, 133.12, 215.04, 296.96, 378.88, 460.8]
+#  MAX_SIZES: [51.2, 133.12, 215.04, 296.96, 378.88, 460.8, 542.72]

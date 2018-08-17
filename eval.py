@@ -24,6 +24,8 @@ parser = argparse.ArgumentParser(
     description='Single Shot MultiBox Detector Evaluation')
 parser.add_argument('--cfg_name', default='test_opensource_coco', type=str,
                     help='Trained state_dict file path to open')
+parser.add_argument('--job_group', default='base', type=str,
+                    help='Trained state_dict file path to open')
 parser.add_argument('--debug', default=False, type=str)
 parser.add_argument('--trained_model', default=None, type=str,
                     help='Trained state_dict file path to open')
@@ -38,7 +40,7 @@ parser.add_argument('--top_k', default=5, type=int,
                     help='Further restrict the number of predictions to parse')
 parser.add_argument('--cuda', default=True, type=str2bool,
                     help='Use cuda to train model')
-parser.add_argument('--devices', default='4,5', type=str,
+parser.add_argument('--devices', default='1', type=str,
                     help='GPU to use')
 parser.add_argument('--cleanup', default=True, type=str2bool,
                     help='Cleanup and remove results files following eval')
@@ -49,21 +51,24 @@ if __name__ == '__main__':
     from lib.utils.config import cfg, merge_cfg_from_file
     from lib.utils.visualize_utils import TBWriter
 
-    args.cfg_name = 'ssd_vgg16_coco'
-    # job_folder = 'base' if not args.debug else 'tests'
-    args.trained_model = 'ssd_vgg16_coco120000.pth'
+    # args.cfg_name = 'ssd_drn22_voc_v19'
+    # # job_folder = 'base' if not args.debug else 'tests'
+    # args.trained_model = 'ssd_drn22_voc_v19_120000.pth'
+    # args.job_group = 'drn'
 
     # args.cfg_name = 'ssd_vgg16_voc'
     # args.trained_model = 'ssd_vgg16_voc20000.pth'
 
-    cfg, tb_writer, cfg_path, snapshot_dir, log_dir = setup_folder(args, cfg, phase='eval')
-
+    tb_writer, cfg_path, snapshot_dir, log_dir = setup_folder(
+        args, cfg, phase='eval')
+    print(cfg.DATASET)
     # cfg_path = osp.join(cfg.CFG_ROOT, job_folder, args.cfg_name+'.yml')
     # merge_cfg_from_file(cfg_path)
     # snapshot_dir = osp.join(cfg.WEIGHTS_ROOT, args.cfg_name)
 
     # model_dir = osp.join(snapshot_dir, args.trained_model)
-    # model_dir = './weights/vgg16_ssd_coco_24.4.pth'
+    # model_dir = './weights/base/ssd_vgg16_voc/ssd_vgg16_voc_120000.pth'
+    model_dir='./weights/{}/{}/{}_70000.pth'.format(args.job_group, args.cfg_name, args.cfg_name)
 
     # args.trained_model = './results/vgg16_ssd_coco_24.4.pth'
     # args.trained_model = './results/ssd300_mAP_77.43_v2.pth'
@@ -78,7 +83,7 @@ if __name__ == '__main__':
     loader = dataset_factory(phase='eval', cfg=cfg)
 
     # load net
-    net, priors, _ = model_factory(phase='eval', cfg=cfg)
+    net, priors, _ = model_factory(phase='eval', cfg=cfg, tb_writer=None)
     # net.load_state_dict(torch.load(model_dir))
     net.load_state_dict(torch.load(model_dir)['state_dict'])
     if args.cuda:
@@ -90,7 +95,7 @@ if __name__ == '__main__':
     net.eval()
 
     print('test_type:', cfg.DATASET.TEST_SETS, 'test_model:', args.trained_model,
-          'device_id:', cfg.CUDA_VISIBLE_DEVICES)
+          'device_id:', cfg.GENERAL.CUDA_VISIBLE_DEVICES)
 
     eval_solver = eval_solver_factory(loader, cfg)
     res, mAPs = eval_solver.validate(net, priors, tb_writer=tb_writer)

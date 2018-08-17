@@ -24,7 +24,7 @@ parser.add_argument('--cfg_name', default='ssd_vgg16_voc',
                     help='base name of config file')
 parser.add_argument('--job_group', default='base', type=str,
                     help='Directory for saving checkpoint models')
-parser.add_argument('--devices', default='0,1,2,3', type=str,
+parser.add_argument('--devices', default='0', type=str,
                     help='GPU to use')
 parser.add_argument('--basenet', default='pretrain/vgg16_reducedfc.pth',
                     help='Pretrained base model')  # TODO config
@@ -49,13 +49,10 @@ def train():
     val_loader = dataset_factory(phase='eval', cfg=cfg)
     eval_solver = eval_solver_factory(val_loader, cfg)
 
-    ssd_net, priors, _ = model_factory(phase='train', cfg=cfg, tb_writer=None)
+    ssd_net, priors, _ = model_factory(phase='train', cfg=cfg, tb_writer=tb_writer)
     net = ssd_net  # net is the parallel version of ssd_net
     print(net)
-    print('predict layers:', _)
-    print(cfg.DATASET)
-    print(cfg.TRAIN)
-    print(cfg.MODEL)
+    print(cfg.TRAIN.OPTIMIZER)
     # return
 
     if args.cuda:
@@ -77,16 +74,16 @@ def train():
 
         try:
             ssd_net.base.load_state_dict(pretrained_weights)
-        except BaseException:
+        except:
             model_dict = ssd_net.base.state_dict()
             pretrained_weights = {k: v for k,
-                                  v in pretrained_weights.items() if k in model_dict}
+                                           v in pretrained_weights.items() if k in model_dict}
             model_dict.update(pretrained_weights)
             ssd_net.base.load_state_dict(model_dict)
 
         # initialize newly added layers' weights with xavier method
         print('Initializing weights...')
-        # ssd_net.extras.apply(weights_init)
+        ssd_net.extras.apply(weights_init)
         ssd_net.loc.apply(weights_init)
         ssd_net.conf.apply(weights_init)
 
@@ -99,9 +96,9 @@ def train():
     criterion = MultiBoxLoss(cfg.MODEL.NUM_CLASSES, 0.5, True, 0, True, 3, 0.5,
                              False, args.cuda)
 
-    # # continue training at 8w, 12w...
-    # if args.start_iter not in cfg.TRAIN.LR_SCHEDULER.STEPS and step_index != 0:
-    #     adjust_learning_rate(optimizer, cfg.TRAIN.LR_SCHEDULER.GAMMA, step_index)
+    # continue training at 8w, 12w...
+    if args.start_iter not in cfg.TRAIN.LR_SCHEDULER.STEPS and step_index != 0:
+        adjust_learning_rate(optimizer, cfg.TRAIN.LR_SCHEDULER.GAMMA, step_index)
 
     net.train()
     epoch_size = len(train_loader.dataset) // cfg.DATASET.TRAIN_BATCH_SIZE
@@ -119,57 +116,57 @@ def train():
         tb_writer.cfg['epoch'] = epoch
         for images, targets, _ in train_loader:
             tb_writer.cfg['iteration'] = iteration
-            t_['misc'].tic()
-            if iteration in cfg.TRAIN.LR_SCHEDULER.STEPS:
-                t_['misc'].tic()
-                step_index += 1
-                adjust_learning_rate(optimizer, cfg.TRAIN.LR_SCHEDULER.GAMMA, step_index)
+            # t_['misc'].tic()
+            # if iteration in cfg.TRAIN.LR_SCHEDULER.STEPS:
+            #     t_['misc'].tic()
+            #     step_index += 1
+            #     adjust_learning_rate(optimizer, cfg.TRAIN.LR_SCHEDULER.GAMMA, step_index)
+            #
+            # if args.cuda:
+            #     images = Variable(images.cuda())
+            #     targets = [Variable(ann.cuda(), volatile=True) for ann in targets]
+            # else:
+            #     images = Variable(images)
+            #     targets = [Variable(ann, volatile=True) for ann in targets]
 
-            if args.cuda:
-                images = Variable(images.cuda())
-                targets = [Variable(ann.cuda(), volatile=True) for ann in targets]
-            else:
-                images = Variable(images)
-                targets = [Variable(ann, volatile=True) for ann in targets]
-
-            # forward
-            t_['network'].tic()
-            out = net(images)
-            out1 = [out[0], out[1], priors]
-
-            # backward
-            optimizer.zero_grad()
-            loss_l, loss_c = criterion(out1, targets)
-            loss = loss_l + loss_c
-            loss.backward()
-            optimizer.step()
-            t_['network'].toc()
-
-            # log
-            if iteration % cfg.TRAIN.LOG_LOSS_ITER == 0:
-                t_['misc'].toc()
-                print('Iter ' + str(iteration) + ' || Loss: %.3f' % (loss.data[0]) +
-                      '|| conf_loss: %.3f' % (loss_c.data[0]) + ' || loc loss: %.3f ' % (loss_l.data[0]), end=' ')
-                print('Timer: %.3f sec.' % t_['misc'].diff, '  Lr: %.6f' % optimizer.param_groups[0]['lr'])
-                if args.tensorboard:
-                    phase = tb_writer.cfg['phase']
-                    tb_writer.writer.add_scalar('{}/loc_loss'.format(phase), loss_l.data[0], iteration)
-                    tb_writer.writer.add_scalar('{}/conf_loss'.format(phase), loss_c.data[0], iteration)
-                    tb_writer.writer.add_scalar('{}/all_loss'.format(phase), loss.data[0], iteration)
-                    tb_writer.writer.add_scalar('{}/time'.format(phase), t_['misc'].diff, iteration)
-
-            # save model
-            if iteration % cfg.TRAIN.SAVE_ITER == 0 and iteration != args.start_iter or \
-                    iteration == cfg.TRAIN.MAX_ITER:
-                print('Saving state, iter:', iteration)
-                save_checkpoint({'iteration': iteration,
-                                 'step_index': step_index,
-                                 'state_dict': ssd_net.state_dict()},
-                                snapshot_dir,
-                                args.cfg_name + '_' + repr(iteration) + '.pth')
+            # # forward
+            # t_['network'].tic()
+            # out = net(images)
+            # out1 = [out[0], out[1], priors]
+            #
+            # # backward
+            # optimizer.zero_grad()
+            # loss_l, loss_c = criterion(out1, targets)
+            # loss = loss_l + loss_c
+            # loss.backward()
+            # optimizer.step()
+            # t_['network'].toc()
+            #
+            # # log
+            # if iteration % cfg.TRAIN.LOG_LOSS_ITER == 0:
+            #     t_['misc'].toc()
+            #     print('Iter ' + str(iteration) + ' || Loss: %.3f' % (loss.data[0]) +
+            #           '|| conf_loss: %.3f' % (loss_c.data[0]) + ' || loc loss: %.3f ' % (loss_l.data[0]), end=' ')
+            #     print('Timer: %.3f sec.' % t_['misc'].diff, '  Lr: %.6f' % optimizer.param_groups[0]['lr'])
+            #     if args.tensorboard:
+            #         phase = tb_writer.cfg['phase']
+            #         tb_writer.writer.add_scalar('{}/loc_loss'.format(phase), loss_l.data[0], iteration)
+            #         tb_writer.writer.add_scalar('{}/conf_loss'.format(phase), loss_c.data[0], iteration)
+            #         tb_writer.writer.add_scalar('{}/all_loss'.format(phase), loss.data[0], iteration)
+            #         tb_writer.writer.add_scalar('{}/time'.format(phase), t_['misc'].diff, iteration)
+            #
+            # # save model
+            # if iteration % cfg.TRAIN.SAVE_ITER == 0 and iteration != args.start_iter or \
+            #         iteration == cfg.TRAIN.MAX_ITER:
+            #     print('Saving state, iter:', iteration)
+            #     save_checkpoint({'iteration': iteration,
+            #                      'step_index': step_index,
+            #                      'state_dict': ssd_net.state_dict()},
+            #                     snapshot_dir,
+            #                     args.cfg_name + '_' + repr(iteration) + '.pth')
 
             # Eval
-            if (iteration % cfg.TRAIN.EVAL_ITER == 0 and iteration != args.start_iter) or \
+            if (iteration % cfg.TRAIN.EVAL_ITER == 0 ) or \
                     iteration == cfg.TRAIN.MAX_ITER:
                 print('Start evaluation ......')
                 tb_writer.cfg['phase'] = 'eval'
@@ -186,6 +183,7 @@ def train():
                     tb_writer.writer.add_scalar('mAP/mAP@0.5', mAPs[0], iteration)
                     tb_writer.writer.add_scalar('mAP/mAP@0.95', mAPs[1], iteration)
                 tb_writer.cfg['phase'] = 'train'
+                return
 
             if iteration == cfg.TRAIN.MAX_ITER:
                 break

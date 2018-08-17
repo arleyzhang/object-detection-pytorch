@@ -86,6 +86,7 @@ class PriorBoxBase(object):
                 if archor[0] == archor[1]:  # only show diagnal anchors
                     cv2.rectangle(image, (bbox[0], bbox[1]), (bbox[2], bbox[3]), (0, 255, 0), 1)
             image = image[..., ::-1]
+            image = image.transpose((2,0,1))
             writer.add_image('base/feature_map_{}_{}'.format(feat_idx, prior_idx), image, 2)
 
     def forward(self, layer_dims, tb_writer=None, image=None):

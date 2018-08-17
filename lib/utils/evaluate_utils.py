@@ -6,7 +6,7 @@ import torch
 from torch.autograd import Variable
 
 from lib.datasets.voc_eval import get_output_dir, evaluate_detections
-from lib.layers import DetectOut
+from lib.layers import *
 from lib.utils import visualize_utils
 from lib.utils.utils import Timer
 
@@ -72,9 +72,10 @@ class EvalBase(object):
             if tb_writer is not None and tb_writer.cfg['show_test_image']:
                 self.visualize_box(images, targets, h, w, det, img_idx, tb_writer)
             img_idx = self.post_proc(det, img_idx, id)
+            print('batch{}: {}s'.format(batch_idx, _t['im_detect'].diff))
 
         _t['misc'].toc(average=False)
-        # print(_t['im_detect'].total_time, _t['misc'].total_time)
+        print(_t['im_detect'].total_time, _t['misc'].total_time)
         return self.evaluate_stats(None, tb_writer)
 
     def visualize_box(self, images, targets, h, w, det, img_idx, tb_writer):

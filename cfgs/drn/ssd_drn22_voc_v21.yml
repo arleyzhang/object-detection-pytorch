@@ -1,0 +1,22 @@
+GENERAL:
+  CUDA_VISIBLE_DEVICES: '4,5,6,7'
+DATASET:
+  NAME: 'VOC0712'
+  SUB_DIR: 'VOCdevkit'
+  TRAIN_SETS: (('2007', 'trainval'), ('2012', 'trainval'), )
+  TEST_SETS:  (('2007', 'test'), )
+  NUM_CLASSES: 20
+  NUM_WORKERS: 24
+#  IMAGE_SIZE: (321, 321)
+
+MODEL:
+  BASE: 'drn_d_22'
+  SSD_TYPE: 'SSD'
+#  IMAGE_SIZE: (321, 321)
+
+TRAIN:
+  OPTIMIZER:
+    LR: 1e-3
+#  MAX_ITER: 240000
+  LR_SCHEDULER:
+    STEPS: (50000, 80000, 100000)

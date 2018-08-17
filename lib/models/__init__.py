@@ -3,14 +3,18 @@ from torch import nn as nn
 from torch.autograd import Variable
 
 from .vgg import vgg16
-from .ssd import SSD
+from .ssd_v3 import SSD
 from .ssd_coco import SSD_COCO
-from .fpn import FPN
+from .fpn_v2 import FPN
 from .fssd import FSSD
 from lib.layers import PriorBoxSSD
 
-bases_list = ['vgg16']
-ssds_list = ['SSD', 'FSSD', 'FPN', 'SSD_COCO']
+from .drn_v3 import *
+from .drnssd import DRN_SSD
+from .rfb_net import RFBNet
+
+bases_list = ['vgg16','drn_d_22','drn_d_24']
+ssds_list = ['SSD', 'FSSD', 'FPN', 'SSD_COCO', 'DRN_SSD', 'RFBNet']
 priors_list = ['PriorBoxSSD']
 
 
@@ -20,13 +24,13 @@ def create(n, lst, **kwargs):
     return eval('{}(**kwargs)'.format(n))
 
 
-def model_factory(phase, cfg):
+def model_factory(phase, cfg, tb_writer=None):
     prior = create(cfg.MODEL.PRIOR_TYPE, priors_list, cfg=cfg)
     cfg.MODEL.NUM_PRIOR = prior.num_priors
     base = create(cfg.MODEL.BASE, bases_list)
     model = create(cfg.MODEL.SSD_TYPE, ssds_list, phase=phase, cfg=cfg, base=base)
     layer_dims = get_layer_dims(model, cfg.MODEL.IMAGE_SIZE)
-    priors = prior.forward(layer_dims)
+    priors = prior.forward(layer_dims, tb_writer)
     return model, priors, layer_dims
 
 
